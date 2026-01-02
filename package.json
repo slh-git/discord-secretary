@@ -2,24 +2,34 @@
   "name": "getting-started",
   "version": "1.0.0",
   "description": "Discord example app",
-  "main": "app.js",
-  "type": "module",
+  "main": "index.js",
   "engines": {
     "node": ">=20.x"
   },
   "scripts": {
-    "start": "node app.js",
+    "start": "node index.js",
     "register": "node commands.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon index.js"
   },
-  "author": "Shay DeWael",
+  "author": "Shang-Lin Hsieh",
   "license": "MIT",
   "dependencies": {
     "discord-interactions": "^3.2.0",
+    "discord.js": "^14.25.1",
     "dotenv": "^16.0.3",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "googleapis": "^169.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slh-git/discord-secretary.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/slh-git/discord-secretary/issues"
+  },
+  "homepage": "https://github.com/slh-git/discord-secretary#readme"
 }
