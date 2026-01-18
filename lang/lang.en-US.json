@@ -87,6 +87,11 @@
                 "title": "{{COM:bot.name}} - Translations",
                 "description": "Thank you to our translators who have made it possible for {{COM:bot.name}} to be used in the following languages. If you are interested in providing a translation, please contact the staff in our [support server]({{COM:links.support}})."
             },
+            "noUpcomingEvents": {
+                "title": "No Upcoming Events",
+                "description": "No upcoming events found in your calendar.",
+                "color": "{{COM:colors.default}}"
+            },
             "devInfo": {
                 "title": "{{COM:bot.name}} - Developer Info",
                 "fields": [
@@ -175,6 +180,10 @@
             "notImplemented": {
                 "description": "This feature has not been implemented yet!",
                 "color": "{{COM:colors.warning}}"
+            },
+            "calendarError": {
+                "description": "Failed to fetch calendar events. Please check your Google Calendar credentials and try again.",
+                "color": "{{COM:colors.error}}"
             }
         },
         "channelRegexes": {
@@ -190,6 +199,7 @@
         },
         "chatCommands": {
             "dev": "dev",
+            "gcalendar": "gcalendar",
             "help": "help",
             "info": "info",
             "test": "test"
@@ -206,6 +216,7 @@
         },
         "commandDescs": {
             "dev": "Developer use only.",
+            "gcalendar": "View upcoming Google Calendar events.",
             "help": "Find help or contact support.",
             "info": "View bot info.",
             "test": "Run the test command."

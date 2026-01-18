@@ -69,6 +69,15 @@ export const ChatCommandMetadata: {
         dm_permission: true,
         default_member_permissions: undefined,
     },
+    GCALENDAR: {
+        type: ApplicationCommandType.ChatInput,
+        name: Lang.getRef('chatCommands.gcalendar', Language.Default),
+        name_localizations: Lang.getRefLocalizationMap('chatCommands.gcalendar'),
+        description: Lang.getRef('commandDescs.gcalendar', Language.Default),
+        description_localizations: Lang.getRefLocalizationMap('commandDescs.gcalendar'),
+        dm_permission: true,
+        default_member_permissions: undefined,
+    },
 };
 
 export const MessageCommandMetadata: {
