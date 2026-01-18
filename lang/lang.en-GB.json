@@ -190,6 +190,7 @@
         },
         "chatCommands": {
             "dev": "dev",
+            "gcalendar": "gcalendar",
             "help": "help",
             "info": "info",
             "test": "test"
@@ -206,6 +207,7 @@
         },
         "commandDescs": {
             "dev": "Developer use only.",
+            "gcalendar": "View upcoming Google Calendar events.",
             "help": "Find help or contact support.",
             "info": "View bot info.",
             "test": "Run the test command."
