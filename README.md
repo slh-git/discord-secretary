@@ -93,6 +93,12 @@ A welcome message is sent to the server and owner when the bot is added.
     - You'll need to edit the following values:
         - `client.id` - Your discord bot's [user ID](https://techswift.org/2020/04/22/how-to-find-your-user-id-on-discord/).
         - `client.token` - Your discord bot's token.
+    - **Optional (recommended for production):** You can supply secrets via environment variables instead of putting them in `config.json`. The app will use these if set:
+        - `DISCORD_BOT_TOKEN` — bot token (overrides `client.token`)
+        - `GOOGLE_CLIENT_ID` — Google OAuth client ID (for calendar features)
+        - `GOOGLE_CLIENT_SECRET` — Google OAuth client secret
+        - `GOOGLE_REDIRECT_URI` — OAuth redirect URI (e.g. `http://localhost:3001/oauth/callback`)
+      Keep `config.json.example` without real secrets and use env vars in production.
 4. Install packages.
     - Navigate into the downloaded source files and type `npm install`.
 5. Register commands.

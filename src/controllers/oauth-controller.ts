@@ -1,16 +1,8 @@
 import { Request, Response, Router } from 'express';
-import { google } from 'googleapis';
-import { createRequire } from 'node:module';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 
+import Config from '../config.js';
+import { createOAuth2Client, saveTokens } from '../services/gcalendar-auth.js';
 import { Controller } from './index.js';
-
-const require = createRequire(import.meta.url);
-let Config = require('../../config/config.json');
-
-const TOKEN_PATH = path.join(process.cwd(), 'config', 'google-tokens.json');
-const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 
 export class OAuthController implements Controller {
     public path = '/oauth';
@@ -29,18 +21,9 @@ export class OAuthController implements Controller {
                 return;
             }
 
-            // Create OAuth2 client
-            const oauth2Client = new google.auth.OAuth2(
-                Config.gCalendar.client_id,
-                Config.gCalendar.client_secret,
-                Config.gCalendar.redirect_uris[0]
-            );
-
-            // Exchange code for tokens
+            const oauth2Client = createOAuth2Client(Config.gCalendar);
             const { tokens } = await oauth2Client.getToken(code);
-
-            // Save tokens to file
-            await fs.writeFile(TOKEN_PATH, JSON.stringify(tokens, null, 2));
+            await saveTokens(tokens);
 
             res.status(200).send(`
                 <html>
@@ -51,14 +34,13 @@ export class OAuthController implements Controller {
                     </body>
                 </html>
             `);
-        } catch (error) {
-            console.error('Error handling OAuth callback:', error);
+        } catch {
             res.status(500).send(`
                 <html>
                     <head><title>Authorization Failed</title></head>
                     <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
                         <h1 style="color: #ff4a4a;">❌ Authorization Failed</h1>
-                        <p>Error: ${error.message}</p>
+                        <p>Something went wrong. Please try again or re-authorize from Discord.</p>
                     </body>
                 </html>
             `);
