@@ -37,10 +37,10 @@ import {
     JobService,
     Logger,
 } from './services/index.js';
-import { Trigger } from './triggers/index.js';
+import { AddCalendarTrigger, Trigger } from './triggers/index.js';
+import Config from './config.js';
 
 const require = createRequire(import.meta.url);
-let Config = require('../config/config.json');
 let Logs = require('../lang/logs.json');
 
 async function start(): Promise<void> {
@@ -90,6 +90,7 @@ async function start(): Promise<void> {
 
     // Triggers
     let triggers: Trigger[] = [
+        new AddCalendarTrigger(),
         // TODO: Add new triggers here
     ];
 
