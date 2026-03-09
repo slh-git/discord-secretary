@@ -1,11 +1,11 @@
-import { EmbedBuilder, Message } from 'discord.js';
 import * as chrono from 'chrono-node';
+import { EmbedBuilder, Message } from 'discord.js';
 
 import Config from '../config.js';
+import { Trigger } from './trigger.js';
 import { EventData } from '../models/internal-models.js';
 import { insertEvent } from '../services/calendar-service.js';
 import { getAuthenticatedClient } from '../services/gcalendar-auth.js';
-import { Trigger } from './trigger.js';
 
 const ADD_CALENDAR_REGEX = /^add\s+(?:calendar|event)\s+(.+)$/i;
 
@@ -17,7 +17,7 @@ export class AddCalendarTrigger implements Trigger {
         return ADD_CALENDAR_REGEX.test(msg.content.trim());
     }
 
-    public async execute(msg: Message, data: EventData): Promise<void> {
+    public async execute(msg: Message, _data: EventData): Promise<void> {
         const match = msg.content.trim().match(ADD_CALENDAR_REGEX);
         if (!match) return;
 
@@ -28,18 +28,25 @@ export class AddCalendarTrigger implements Trigger {
 
         const body = match[1].trim();
         if (!body) {
-            await this.sendReply(msg, 'Please add a description and time, e.g. `add calendar dentist appointment Wednesday 3 pm`.');
+            await this.sendReply(
+                msg,
+                'Please add a description and time, e.g. `add calendar dentist appointment Wednesday 3 pm`.'
+            );
             return;
         }
 
-        const results = chrono.parse(body);
+        const results = chrono.parse(body, new Date(), { forwardDate: true });
         if (!results || results.length === 0) {
-            await this.sendReply(msg, "I couldn't find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`.");
+            await this.sendReply(
+                msg,
+                'I couldn\'t find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`.'
+            );
             return;
         }
 
         const result = results[0];
         const startDate = result.date();
+        const allDay = !result.start.isCertain('hour');
         let title = body
             .replace(result.text, '')
             .trim()
@@ -64,11 +71,15 @@ export class AddCalendarTrigger implements Trigger {
             const { htmlLink } = await insertEvent('primary', {
                 summary: title,
                 start: startDate,
+                allDay,
             });
+
+            const dateString = allDay ? startDate.toLocaleDateString() : startDate.toLocaleString();
+            const timePrefix = allDay ? 'on' : 'at';
 
             const embed = new EmbedBuilder()
                 .setTitle('Event added')
-                .setDescription(`**${title}** at ${startDate.toLocaleString()}`)
+                .setDescription(`**${title}** ${timePrefix} ${dateString}`)
                 .setURL(htmlLink)
                 .setColor('#4285F4');
             await this.sendReply(msg, embed);
@@ -81,14 +92,12 @@ export class AddCalendarTrigger implements Trigger {
         }
     }
 
-    private async sendReply(
-        msg: Message,
-        content: string | EmbedBuilder
-    ): Promise<void> {
+    private async sendReply(msg: Message, content: string | EmbedBuilder): Promise<void> {
         try {
-            const payload =
-                typeof content === 'string' ? { content } : { embeds: [content] };
-            await msg.channel.send(payload);
+            const payload = typeof content === 'string' ? { content } : { embeds: [content] };
+            if ('send' in msg.channel) {
+                await msg.channel.send(payload);
+            }
         } catch {
             // Channel may be deleted or bot lack permission
         }

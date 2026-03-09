@@ -1,8 +1,8 @@
 import { Request, Response, Router } from 'express';
 
 import Config from '../config.js';
-import { createOAuth2Client, saveTokens } from '../services/gcalendar-auth.js';
 import { Controller } from './index.js';
+import { createOAuth2Client, saveTokens } from '../services/gcalendar-auth.js';
 
 export class OAuthController implements Controller {
     public path = '/oauth';

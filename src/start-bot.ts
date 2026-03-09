@@ -18,6 +18,7 @@ import {
 } from './commands/index.js';
 import { ViewDateSent } from './commands/message/index.js';
 import { ViewDateJoined } from './commands/user/index.js';
+import Config from './config.js';
 import {
     ButtonHandler,
     CommandHandler,
@@ -38,7 +39,6 @@ import {
     Logger,
 } from './services/index.js';
 import { AddCalendarTrigger, Trigger } from './triggers/index.js';
-import Config from './config.js';
 
 const require = createRequire(import.meta.url);
 let Logs = require('../lang/logs.json');

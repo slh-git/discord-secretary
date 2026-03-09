@@ -16,21 +16,20 @@ export interface GCalendarConfig {
     redirect_uris: string[];
 }
 
-export function createOAuth2Client(config: GCalendarConfig): import('googleapis').auth.OAuth2 {
-    return new google.auth.OAuth2(
-        config.client_id,
-        config.client_secret,
-        config.redirect_uris[0]
-    );
+export function createOAuth2Client(
+    config: GCalendarConfig
+): import('googleapis').Auth.OAuth2Client {
+    return new google.auth.OAuth2(config.client_id, config.client_secret, config.redirect_uris[0]);
 }
 
 /**
  * Load stored tokens from TOKEN_PATH and return an authenticated OAuth2 client.
  * Throws if file is missing or invalid.
  */
-export async function getAuthenticatedClient(
-    config: GCalendarConfig
-): Promise<{ oauth2Client: import('googleapis').auth.OAuth2; calendar: ReturnType<typeof google.calendar> }> {
+export async function getAuthenticatedClient(config: GCalendarConfig): Promise<{
+    oauth2Client: import('googleapis').Auth.OAuth2Client;
+    calendar: ReturnType<typeof google.calendar>;
+}> {
     const oauth2Client = createOAuth2Client(config);
     const tokenData = await fs.readFile(TOKEN_PATH, 'utf-8');
     const tokens = JSON.parse(tokenData);
