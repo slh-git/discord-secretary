@@ -11,8 +11,8 @@ import { createRequire } from 'node:module';
 
 import { EventHandler } from './index.js';
 import { Command, CommandDeferType } from '../commands/index.js';
-import { DiscordLimits } from '../constants/index.js';
 import Config from '../config.js';
+import { DiscordLimits } from '../constants/index.js';
 import { EventData } from '../models/internal-models.js';
 import { EventDataService, Lang, Logger } from '../services/index.js';
 import { CommandUtils, InteractionUtils } from '../utils/index.js';

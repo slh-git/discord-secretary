@@ -21,10 +21,11 @@ The manager mode is required for OAuth integrations (like Google Calendar) becau
 4. Run `npm run commands:register` to sync with Discord API
 
 **Example command structure:**
+
 ```typescript
 export class MyCommand implements Command {
     public names = [Lang.getRef('chatCommands.mycommand', Language.Default)];
-    public deferType = CommandDeferType.PUBLIC;  // or HIDDEN or NONE
+    public deferType = CommandDeferType.PUBLIC; // or HIDDEN or NONE
     public requireClientPerms: PermissionsString[] = [];
     public async execute(intr: ChatInputCommandInteraction, data: EventData): Promise<void> {
         await InteractionUtils.send(intr, Lang.getEmbed('displayEmbeds.myResponse', data.lang));
@@ -35,8 +36,9 @@ export class MyCommand implements Command {
 ### Event Handler Pipeline
 
 All Discord events flow through specialized handlers in `src/events/`:
+
 - Commands → `CommandHandler` (with built-in rate limiting from config)
-- Buttons → `ButtonHandler` 
+- Buttons → `ButtonHandler`
 - Reactions → `ReactionHandler`
 - Messages → `MessageHandler` (includes trigger system)
 
@@ -52,18 +54,20 @@ Config is loaded from a **single module** [src/config.ts](src/config.ts), which 
 ### Multi-Language Support
 
 All user-facing text lives in `lang/` directory:
+
 - `lang.common.json`: Shared across all languages (colors, URLs)
 - `lang.en-US.json`, `lang.en-GB.json`: Language-specific strings
 - Access via `Lang` service methods:
-  - `Lang.getEmbed(location, langCode)`: Returns Discord EmbedBuilder
-  - `Lang.getRef(location, langCode)`: Returns string
-  - `Lang.getCom(location)`: Returns common value
+    - `Lang.getEmbed(location, langCode)`: Returns Discord EmbedBuilder
+    - `Lang.getRef(location, langCode)`: Returns string
+    - `Lang.getCom(location)`: Returns common value
 
 Structure uses dot notation: `"chatCommands.gcalendar": "gcalendar"`
 
 ## Critical Workflows
 
 ### Build and Test
+
 ```bash
 npm run build          # Compile TS to dist/ (required before running)
 npm test              # Run vitest tests once
@@ -72,6 +76,7 @@ npm run test:coverage # Generate coverage report
 ```
 
 ### Running Locally
+
 ```bash
 npm start                  # Single instance (start-bot)
 npm run start:manager      # Sharding + API server (start-manager)
@@ -79,6 +84,7 @@ npm run start:pm2         # PM2 process manager
 ```
 
 ### Command Management
+
 ```bash
 npm run commands:view      # List registered commands
 npm run commands:register  # Register/update commands with Discord (run after changes)
@@ -86,6 +92,7 @@ npm run commands:clear     # Remove all commands
 ```
 
 ### Code Quality
+
 ```bash
 npm run lint              # ESLint check
 npm run lint:fix          # Auto-fix linting issues
@@ -114,7 +121,11 @@ npm run format:fix        # Prettier auto-format
 Test files live in `tests/` (mirroring `src/`) and in `src/**/*.test.ts`. Use builder pattern for mocking Discord entities:
 
 ```typescript
-import { userBuilder, guildBuilder, commandInteractionBuilder } from '../builders/discord-builders.js';
+import {
+    userBuilder,
+    guildBuilder,
+    commandInteractionBuilder,
+} from '../builders/discord-builders.js';
 
 const user = userBuilder().withId('123').withUsername('testuser').build();
 const interaction = commandInteractionBuilder().withUser(user).build();

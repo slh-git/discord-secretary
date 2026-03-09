@@ -24,8 +24,7 @@ const config = {
         ? {
               ...fileConfig.gCalendar,
               client_id: process.env.GOOGLE_CLIENT_ID ?? fileConfig.gCalendar.client_id,
-              client_secret:
-                  process.env.GOOGLE_CLIENT_SECRET ?? fileConfig.gCalendar.client_secret,
+              client_secret: process.env.GOOGLE_CLIENT_SECRET ?? fileConfig.gCalendar.client_secret,
               redirect_uris:
                   process.env.GOOGLE_REDIRECT_URI != null
                       ? [process.env.GOOGLE_REDIRECT_URI]

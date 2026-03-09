@@ -5,6 +5,7 @@ export interface CalendarEventInput {
     summary: string;
     start: Date;
     end?: Date;
+    allDay?: boolean;
 }
 
 /**
@@ -23,15 +24,33 @@ export async function insertEvent(
     const start = event.start.toISOString();
     const end = event.end
         ? event.end.toISOString()
-        : new Date(event.start.getTime() + 60 * 60 * 1000).toISOString(); // default 1 hour
+        : new Date(event.start.getTime() + (event.allDay ? 24 : 1) * 60 * 60 * 1000).toISOString();
+
+    const requestBody: any = {
+        summary: event.summary,
+    };
+
+    if (event.allDay) {
+        const formatDate = (d: Date): string => {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+        const endDateObj = event.end
+            ? event.end
+            : new Date(event.start.getTime() + 24 * 60 * 60 * 1000);
+
+        requestBody.start = { date: formatDate(event.start) };
+        requestBody.end = { date: formatDate(endDateObj) };
+    } else {
+        requestBody.start = { dateTime: start, timeZone: 'UTC' };
+        requestBody.end = { dateTime: end, timeZone: 'UTC' };
+    }
 
     const res = await calendar.events.insert({
         calendarId,
-        requestBody: {
-            summary: event.summary,
-            start: { dateTime: start, timeZone: 'UTC' },
-            end: { dateTime: end, timeZone: 'UTC' },
-        },
+        requestBody,
     });
 
     const id = res.data.id ?? '';
