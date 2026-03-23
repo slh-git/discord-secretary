@@ -14,6 +14,7 @@ export class AddCalendarTrigger implements Trigger {
 
     public triggered(msg: Message): boolean {
         if (!msg.content || msg.author.bot) return false;
+        if (!Config.developers.includes(msg.author.id)) return false;
         return ADD_CALENDAR_REGEX.test(msg.content.trim());
     }
 

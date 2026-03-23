@@ -18,6 +18,10 @@ export class GCalendarCommand implements Command {
     public requireClientPerms: PermissionsString[] = [];
 
     public async execute(intr: ChatInputCommandInteraction, data: EventData): Promise<void> {
+        if (!Config.developers.includes(intr.user.id)) {
+            await InteractionUtils.send(intr, Lang.getEmbed('validationEmbeds.devOnly', data.lang));
+            return;
+        }
         try {
             const oauth2Client = createOAuth2Client(Config.gCalendar);
 
