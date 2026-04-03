@@ -3,14 +3,7 @@ import { createRequire } from 'node:module';
 import 'reflect-metadata';
 
 import Config from './config.js';
-import {
-    GuildsController,
-    OAuthController,
-    RootController,
-    ShardsController,
-} from './controllers/index.js';
-import { Job, UpdateServerCountJob } from './jobs/index.js';
-import { Api } from './models/api.js';
+import { Job } from './jobs/index.js';
 import { Manager } from './models/manager.js';
 import { HttpService, JobService, Logger, MasterApiService } from './services/index.js';
 import { MathUtils, ShardUtils } from './utils/index.js';
@@ -22,18 +15,16 @@ let Logs = require('../lang/logs.json');
 async function start(): Promise<void> {
     Logger.info(Logs.info.appStarted);
 
-    // Dependencies
-    let httpService = new HttpService();
-    let masterApiService = new MasterApiService(httpService);
+    let masterApiService: MasterApiService | undefined;
     if (Config.clustering.enabled) {
+        masterApiService = new MasterApiService(new HttpService());
         await masterApiService.register();
     }
 
-    // Sharding
     let shardList: number[];
     let totalShards: number;
     try {
-        if (Config.clustering.enabled) {
+        if (Config.clustering.enabled && masterApiService) {
             let resBody = await masterApiService.login();
             shardList = resBody.shardList;
             let requiredShards = await ShardUtils.requiredShardCount(Config.client.token);
@@ -64,25 +55,12 @@ async function start(): Promise<void> {
         shardList,
     });
 
-    // Jobs
-    let jobs: Job[] = [
-        Config.clustering.enabled ? undefined : new UpdateServerCountJob(shardManager, httpService),
-        // TODO: Add new jobs here
-    ].filter(Boolean);
+    let jobs: Job[] = [];
 
     let manager = new Manager(shardManager, new JobService(jobs));
 
-    // API
-    let guildsController = new GuildsController(shardManager);
-    let shardsController = new ShardsController(shardManager);
-    let oauthController = new OAuthController();
-    let rootController = new RootController();
-    let api = new Api([guildsController, shardsController, oauthController, rootController]);
-
-    // Start
     await manager.start();
-    await api.start();
-    if (Config.clustering.enabled) {
+    if (Config.clustering.enabled && masterApiService) {
         await masterApiService.ready();
     }
 }
