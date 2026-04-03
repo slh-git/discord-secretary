@@ -37,6 +37,10 @@ export class CommandHandler implements EventHandler {
             return;
         }
 
+        if (intr.guild) {
+            return;
+        }
+
         let commandParts =
             intr instanceof ChatInputCommandInteraction || intr instanceof AutocompleteInteraction
                 ? [

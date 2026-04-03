@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('chrono-node', () => ({ parse: () => [] }));
-vi.mock('../config.js', () => ({ default: { gCalendar: {} } }));
+vi.mock('../config.js', () => ({
+    default: { gCalendar: {}, developers: ['test-user'] },
+}));
 
 import { AddCalendarTrigger } from './add-calendar-trigger.js';
 
@@ -14,7 +16,7 @@ describe('AddCalendarTrigger', () => {
 
     describe('triggered', () => {
         function mockMessage(content: string | null, bot: boolean = false): any {
-            return { content, author: { bot } } as any;
+            return { content, author: { bot, id: 'test-user' } } as any;
         }
 
         it('returns true for "add calendar dentist Wednesday 3 pm"', () => {
