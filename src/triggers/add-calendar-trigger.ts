@@ -40,7 +40,7 @@ export class AddCalendarTrigger implements Trigger {
         if (!results || results.length === 0) {
             await this.sendReply(
                 msg,
-                'I couldn\'t find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`.'
+                "I couldn't find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`."
             );
             return;
         }

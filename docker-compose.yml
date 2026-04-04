@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  discord-bot:
-    build: .
-    container_name: discord-secretary
-    restart: unless-stopped
-    volumes:
-      - ./config:/app/config
-    environment:
-      - NODE_ENV=production
+    discord-bot:
+        build: .
+        container_name: discord-secretary
+        restart: unless-stopped
+        volumes:
+            - ./config:/app/config
+        environment:
+            - NODE_ENV=production
