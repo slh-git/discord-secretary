@@ -1,5 +1,4 @@
 import { DiscordAPIError } from 'discord.js';
-import { Response } from 'node-fetch';
 import { createRequire } from 'node:module';
 import pino from 'pino';
 
@@ -27,8 +26,6 @@ let logger = pino(
 );
 
 export class Logger {
-    private static shardId: number;
-
     public static info(message: string, obj?: any): void {
         if (obj) {
             logger.info(obj, message);
@@ -59,22 +56,6 @@ export class Logger {
                     message: obj,
                 })
                 .error(message);
-        } else if (obj instanceof Response) {
-            let resText: string;
-            try {
-                resText = await obj.text();
-            } catch {
-                // Ignore
-            }
-            logger
-                .child({
-                    path: obj.url,
-                    statusCode: obj.status,
-                    statusName: obj.statusText,
-                    headers: obj.headers.raw(),
-                    body: resText,
-                })
-                .error(message);
         } else if (obj instanceof DiscordAPIError) {
             logger
                 .child({
@@ -88,13 +69,6 @@ export class Logger {
                 .error(message);
         } else {
             logger.error(obj, message);
-        }
-    }
-
-    public static setShardId(shardId: number): void {
-        if (this.shardId !== shardId) {
-            this.shardId = shardId;
-            logger = logger.child({ shardId });
         }
     }
 }

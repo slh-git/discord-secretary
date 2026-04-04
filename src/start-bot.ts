@@ -1,5 +1,5 @@
 import { REST } from '@discordjs/rest';
-import { Options, Partials } from 'discord.js';
+import { Client, Options, Partials } from 'discord.js';
 import { createRequire } from 'node:module';
 
 import { GCalendarCommand } from './commands/chat/index.js';
@@ -7,25 +7,16 @@ import { ChatCommandMetadata, Command } from './commands/index.js';
 import Config from './config.js';
 import { OAuthController, RootController } from './controllers/index.js';
 import { CommandHandler, MessageHandler, TriggerHandler } from './events/index.js';
-import { CustomClient } from './extensions/index.js';
-import { Job } from './jobs/index.js';
 import { Api } from './models/api.js';
 import { Bot } from './models/bot.js';
-import {
-    CommandRegistrationService,
-    EventDataService,
-    JobService,
-    Logger,
-} from './services/index.js';
+import { CommandRegistrationService, Logger } from './services/index.js';
 import { AddCalendarTrigger, Trigger } from './triggers/index.js';
 
 const require = createRequire(import.meta.url);
 let Logs = require('../lang/logs.json');
 
 async function start(): Promise<void> {
-    let eventDataService = new EventDataService();
-
-    let client = new CustomClient({
+    let client = new Client({
         intents: Config.client.intents,
         partials: (Config.client.partials as string[]).map(partial => Partials[partial]),
         makeCache: Options.cacheWithLimits({
@@ -39,18 +30,15 @@ async function start(): Promise<void> {
 
     let triggers: Trigger[] = [new AddCalendarTrigger()];
 
-    let commandHandler = new CommandHandler(commands, eventDataService);
-    let triggerHandler = new TriggerHandler(triggers, eventDataService);
+    let commandHandler = new CommandHandler(commands);
+    let triggerHandler = new TriggerHandler(triggers);
     let messageHandler = new MessageHandler(triggerHandler);
-
-    let jobs: Job[] = [];
 
     let bot = new Bot(
         Config.client.token,
         client,
         messageHandler,
-        commandHandler,
-        new JobService(jobs)
+        commandHandler
     );
 
     let serveHttp = !client.shard || client.shard.ids[0] === 0;

@@ -3,22 +3,19 @@ import { EmbedBuilder, Message } from 'discord.js';
 
 import Config from '../config.js';
 import { Trigger } from './trigger.js';
-import { EventData } from '../models/internal-models.js';
 import { insertEvent } from '../services/calendar-service.js';
 import { getAuthenticatedClient } from '../services/gcalendar-auth.js';
 
 const ADD_CALENDAR_REGEX = /^add\s+(?:calendar|event)\s+(.+)$/i;
 
 export class AddCalendarTrigger implements Trigger {
-    public requireGuild = false;
-
     public triggered(msg: Message): boolean {
         if (!msg.content || msg.author.bot) return false;
         if (!Config.developers.includes(msg.author.id)) return false;
         return ADD_CALENDAR_REGEX.test(msg.content.trim());
     }
 
-    public async execute(msg: Message, _data: EventData): Promise<void> {
+    public async execute(msg: Message): Promise<void> {
         const match = msg.content.trim().match(ADD_CALENDAR_REGEX);
         if (!match) return;
 

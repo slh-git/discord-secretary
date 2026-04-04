@@ -12,7 +12,7 @@ import { createRequire } from 'node:module';
 
 import Config from '../config.js';
 import { CommandHandler, MessageHandler } from '../events/index.js';
-import { JobService, Logger } from '../services/index.js';
+import { Logger } from '../services/index.js';
 import { PartialUtils } from '../utils/index.js';
 
 const require = createRequire(import.meta.url);
@@ -26,8 +26,7 @@ export class Bot {
         private token: string,
         private client: Client,
         private messageHandler: MessageHandler,
-        private commandHandler: CommandHandler,
-        private jobService: JobService
+        private commandHandler: CommandHandler
     ) {}
 
     public async start(): Promise<void> {
@@ -37,7 +36,6 @@ export class Bot {
 
     private registerListeners(): void {
         this.client.on(Events.ClientReady, () => this.onReady());
-        this.client.on(Events.ShardReady, (shardId: number) => this.onShardReady(shardId));
         this.client.on(Events.MessageCreate, (msg: Message) => this.onMessage(msg));
         this.client.on(Events.InteractionCreate, (intr: Interaction) => this.onInteraction(intr));
         this.client.rest.on(RESTEvents.RateLimited, (rateLimitData: RateLimitData) =>
@@ -57,17 +55,8 @@ export class Bot {
     private async onReady(): Promise<void> {
         let userTag = this.client.user?.tag;
         Logger.info(Logs.info.clientLogin.replaceAll('{USER_TAG}', userTag));
-
-        if (!Debug.dummyMode.enabled) {
-            this.jobService.start();
-        }
-
         this.ready = true;
         Logger.info(Logs.info.clientReady);
-    }
-
-    private onShardReady(shardId: number): void {
-        Logger.setShardId(shardId);
     }
 
     private async onMessage(msg: Message): Promise<void> {
