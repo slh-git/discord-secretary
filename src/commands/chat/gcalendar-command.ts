@@ -1,27 +1,19 @@
-import { ChatInputCommandInteraction, EmbedBuilder, PermissionsString } from 'discord.js';
+import { ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 
 import Config from '../../config.js';
-import { Language } from '../../models/enum-helpers/index.js';
-import { EventData } from '../../models/internal-models.js';
 import {
     createOAuth2Client,
     getAuthenticatedClient,
     SCOPES,
 } from '../../services/gcalendar-auth.js';
-import { Lang } from '../../services/index.js';
 import { InteractionUtils } from '../../utils/index.js';
 import { Command, CommandDeferType } from '../index.js';
 
 export class GCalendarCommand implements Command {
-    public names = [Lang.getRef('chatCommands.gcalendar', Language.Default)];
+    public names = ['gcalendar'];
     public deferType = CommandDeferType.PUBLIC;
-    public requireClientPerms: PermissionsString[] = [];
 
-    public async execute(intr: ChatInputCommandInteraction, data: EventData): Promise<void> {
-        if (!Config.developers.includes(intr.user.id)) {
-            await InteractionUtils.send(intr, Lang.getEmbed('validationEmbeds.devOnly', data.lang));
-            return;
-        }
+    public async execute(intr: ChatInputCommandInteraction): Promise<void> {
         try {
             const oauth2Client = createOAuth2Client(Config.gCalendar);
 
@@ -59,10 +51,7 @@ export class GCalendarCommand implements Command {
             const events = result.data.items;
 
             if (!events || events.length === 0) {
-                await InteractionUtils.send(
-                    intr,
-                    Lang.getEmbed('displayEmbeds.noUpcomingEvents', data.lang)
-                );
+                await InteractionUtils.send(intr, 'No upcoming events found.');
                 return;
             }
 
@@ -86,7 +75,7 @@ export class GCalendarCommand implements Command {
             console.error('Error fetching calendar events:', error);
             await InteractionUtils.send(
                 intr,
-                Lang.getEmbed('errorEmbeds.calendarError', data.lang)
+                'Unable to fetch calendar events right now. Please try again.'
             );
         }
     }
