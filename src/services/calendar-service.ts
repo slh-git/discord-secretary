@@ -1,5 +1,10 @@
 import Config from '../config.js';
-import { getAuthenticatedClient } from './gcalendar-auth.js';
+import {
+    CalendarReauthRequiredError,
+    getAuthenticatedClient,
+    invalidateTokensAndGetAuthUrl,
+    isGoogleInvalidGrant,
+} from './gcalendar-auth.js';
 
 export interface CalendarEventInput {
     summary: string;
@@ -48,12 +53,20 @@ export async function insertEvent(
         requestBody.end = { dateTime: end, timeZone: 'UTC' };
     }
 
-    const res = await calendar.events.insert({
-        calendarId,
-        requestBody,
-    });
+    try {
+        const res = await calendar.events.insert({
+            calendarId,
+            requestBody,
+        });
 
-    const id = res.data.id ?? '';
-    const htmlLink = res.data.htmlLink ?? '';
-    return { id, htmlLink };
+        const id = res.data.id ?? '';
+        const htmlLink = res.data.htmlLink ?? '';
+        return { id, htmlLink };
+    } catch (err: unknown) {
+        if (Config.gCalendar && isGoogleInvalidGrant(err)) {
+            const authUrl = await invalidateTokensAndGetAuthUrl(Config.gCalendar);
+            throw new CalendarReauthRequiredError(authUrl);
+        }
+        throw err;
+    }
 }
