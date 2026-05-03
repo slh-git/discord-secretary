@@ -12,8 +12,8 @@
  *   GOOGLE_REDIRECT_URI      -> gCalendar.redirect_uris[0]
  *   LOCAL_LLM_ENABLED        -> localLlm.enabled ("true"|"false")
  *   LOCAL_LLM_BASE_URL       -> localLlm.baseUrl (e.g. http://127.0.0.1:11434)
- *   LOCAL_LLM_MODEL          -> localLlm.model (e.g. gemma:2b)
- *   LOCAL_LLM_TIMEOUT_MS     -> localLlm.timeoutMs (e.g. 120000 for large remote models)
+ *   LOCAL_LLM_MODEL          -> localLlm.model (must match `ollama list`, e.g. gemma45:e2b)
+ *   LOCAL_LLM_TIMEOUT_MS     -> localLlm.timeoutMs (wall-clock wait for /api/chat; default 300000)
  */
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -25,6 +25,8 @@ const require = createRequire(import.meta.url);
 loadEnv({ path: path.resolve(process.cwd(), '.env') });
 
 const fileConfig = require('../config/config.json');
+
+const fileLocalLlm = fileConfig.localLlm ?? {};
 
 const developerIdsFromEnv = process.env.DISCORD_DEVELOPER_IDS?.split(',')
     .map(s => s.trim())
@@ -54,10 +56,18 @@ const config = {
           }
         : undefined,
     localLlm: {
-        enabled: (process.env.LOCAL_LLM_ENABLED ?? 'false').toLowerCase() === 'true',
-        baseUrl: process.env.LOCAL_LLM_BASE_URL ?? 'http://127.0.0.1:11434',
-        model: process.env.LOCAL_LLM_MODEL ?? 'gemma:2b',
-        timeoutMs: Number(process.env.LOCAL_LLM_TIMEOUT_MS ?? '120000') || 120000,
+        enabled:
+            process.env.LOCAL_LLM_ENABLED !== undefined && process.env.LOCAL_LLM_ENABLED !== ''
+                ? process.env.LOCAL_LLM_ENABLED.toLowerCase() === 'true'
+                : Boolean(fileLocalLlm.enabled),
+        baseUrl:
+            process.env.LOCAL_LLM_BASE_URL ??
+            fileLocalLlm.baseUrl ??
+            'http://127.0.0.1:11434',
+        model: process.env.LOCAL_LLM_MODEL ?? fileLocalLlm.model ?? 'gemma:2b',
+        timeoutMs:
+            Number(process.env.LOCAL_LLM_TIMEOUT_MS ?? fileLocalLlm.timeoutMs ?? '300000') ||
+            300000,
     },
 };
 

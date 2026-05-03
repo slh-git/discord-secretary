@@ -52,13 +52,11 @@ export class AddCalendarTrigger implements Trigger {
 
         const now = new Date();
         const chronoResults = chrono.parse(body, now, { forwardDate: true });
-        const looksLikeMultiple =
-            /\s+\band\b\s+/i.test(body) ||
-            /\s*,\s*/.test(body) ||
-            (chronoResults?.length ?? 0) > 1;
 
         try {
-            if (looksLikeMultiple) {
+            // When LOCAL_LLM_ENABLED=true, always try Ollama first (not only "multi-looking"
+            // messages). Single-event phrases were previously skipped and never hit the LLM.
+            if (Config.localLlm.enabled) {
                 const parsed = await parseEventsWithLocalLlm(Config.localLlm, {
                     text: body,
                     nowIso: now.toISOString(),
