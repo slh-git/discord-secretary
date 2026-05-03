@@ -10,6 +10,63 @@ export const SCOPES = [
 
 export const TOKEN_PATH = path.join(process.cwd(), 'config', 'google-tokens.json');
 
+/** Thrown when stored tokens were cleared; user must open `authUrl` and sign in again. */
+export class CalendarReauthRequiredError extends Error {
+    constructor(public readonly authUrl: string) {
+        super('Google Calendar re-authorization required');
+        this.name = 'CalendarReauthRequiredError';
+    }
+}
+
+export function isGoogleInvalidGrant(error: unknown): boolean {
+    const e = error as {
+        cause?: { message?: string };
+        response?: { data?: { error?: string } };
+        code?: string;
+    };
+    return (
+        e?.cause?.message === 'invalid_grant' ||
+        e?.response?.data?.error === 'invalid_grant' ||
+        e?.code === 'invalid_grant'
+    );
+}
+
+/**
+ * Remove saved OAuth tokens so the next successful OAuth callback writes fresh tokens.
+ */
+export async function clearStoredTokens(): Promise<void> {
+    try {
+        await fs.unlink(TOKEN_PATH);
+    } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException)?.code;
+        if (code !== 'ENOENT') throw err;
+    }
+}
+
+/**
+ * Build the Google OAuth URL (first-time or routine authorize).
+ */
+export function getAuthorizationUrl(config: GCalendarConfig): string {
+    const client = createOAuth2Client(config);
+    return client.generateAuthUrl({
+        access_type: 'offline',
+        scope: SCOPES,
+    });
+}
+
+/**
+ * After `invalid_grant`, clear disk tokens and return a URL that prompts consent so Google issues a new refresh token.
+ */
+export async function invalidateTokensAndGetAuthUrl(config: GCalendarConfig): Promise<string> {
+    await clearStoredTokens();
+    const client = createOAuth2Client(config);
+    return client.generateAuthUrl({
+        access_type: 'offline',
+        scope: SCOPES,
+        prompt: 'consent',
+    });
+}
+
 export interface GCalendarConfig {
     client_id: string;
     client_secret: string;

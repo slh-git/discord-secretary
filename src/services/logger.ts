@@ -2,8 +2,9 @@ import { DiscordAPIError } from 'discord.js';
 import { createRequire } from 'node:module';
 import pino from 'pino';
 
+import Config from '../config.js';
+
 const require = createRequire(import.meta.url);
-let Config = require('../../config/config.json');
 
 let logger = pino(
     {
