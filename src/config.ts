@@ -14,10 +14,13 @@
  *   LOCAL_LLM_BASE_URL       -> localLlm.baseUrl (e.g. http://127.0.0.1:11434)
  *   LOCAL_LLM_MODEL          -> localLlm.model (must match `ollama list`, e.g. gemma45:e2b)
  *   LOCAL_LLM_TIMEOUT_MS     -> localLlm.timeoutMs (wall-clock wait for /api/chat; default 300000)
+ *   LOCAL_LLM_TOOL_MAX_ROUNDS -> localLlm.toolMaxRounds (max tool loop turns; default 5)
+ *   REMINDER_JOB_STORE_PATH   -> reminderJobs.storePath (default data/reminder-jobs.json)
+ *   REMINDER_JOB_POLL_MS      -> reminderJobs.pollIntervalMs (default 15000)
  */
+import { config as loadEnv } from 'dotenv';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { config as loadEnv } from 'dotenv';
 
 const require = createRequire(import.meta.url);
 
@@ -68,6 +71,18 @@ const config = {
         timeoutMs:
             Number(process.env.LOCAL_LLM_TIMEOUT_MS ?? fileLocalLlm.timeoutMs ?? '300000') ||
             300000,
+        toolMaxRounds:
+            Number(process.env.LOCAL_LLM_TOOL_MAX_ROUNDS ?? fileLocalLlm.toolMaxRounds ?? '5') ||
+            5,
+    },
+    reminderJobs: {
+        storePath:
+            process.env.REMINDER_JOB_STORE_PATH ??
+            fileConfig.reminderJobs?.storePath ??
+            path.join(process.cwd(), 'data', 'reminder-jobs.json'),
+        pollIntervalMs:
+            Number(process.env.REMINDER_JOB_POLL_MS ?? fileConfig.reminderJobs?.pollIntervalMs ?? '15000') ||
+            15000,
     },
 };
 

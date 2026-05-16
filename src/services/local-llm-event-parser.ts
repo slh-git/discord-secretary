@@ -52,12 +52,16 @@ function parseEventsPayloadFromContent(content: string): unknown | undefined {
 /**
  * POST JSON with a **wall-clock** timeout from request start.
  *
+ * Shared by both:
+ * - structured JSON extraction (`format: "json"`)
+ * - tool loop requests (`tools` in request, `message.tool_calls` in response)
+ *
  * Node's built-in `timeout` on `http.request` is socket *inactivity*: while Ollama
  * (or any LLM) runs inference it sends nothing, so the client sees an "idle"
  * socket and hits the limit long before the model finishes. A single timer
  * matches how people set `LOCAL_LLM_TIMEOUT_MS` (total wait for a reply).
  */
-function postJson<TResponse>(
+export function postJson<TResponse>(
     urlString: string,
     body: unknown,
     timeoutMs: number
