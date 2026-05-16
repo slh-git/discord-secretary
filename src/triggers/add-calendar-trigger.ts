@@ -8,32 +8,122 @@ import {
     CalendarReauthRequiredError,
     getAuthenticatedClient,
 } from '../services/gcalendar-auth.js';
+import { JobStore } from '../services/job-store.js';
+import {
+    ButlerAction,
+    executeButlerActions,
+    runButlerToolLoop,
+} from '../services/llm-tool-agent.js';
 import { parseEventsWithLocalLlm } from '../services/local-llm-event-parser.js';
+import { Logger } from '../services/logger.js';
 
 const ADD_CALENDAR_REGEX = /^add\s+(?:calendar|event)\s+(.+)$/i;
+const CONFIRM_REGEX = /^confirm\s+([a-z0-9-]{6,})$/i;
+const SCHEDULING_HINT_REGEX =
+    /\b(schedule|remind|calendar|event|appointment|meeting|tomorrow|today|tonight|next|at\s+\d)/i;
+const CONFIRM_TTL_MS = 10 * 60 * 1000;
+
+function unknownToErrorMessage(err: unknown): string {
+    if (err instanceof Error) return err.message;
+    if (typeof err === 'string') return err;
+    try {
+        return JSON.stringify(err);
+    } catch {
+        return 'Unknown error';
+    }
+}
+
+interface PendingConfirmation {
+    userId: string;
+    channelId: string;
+    createdAtMs: number;
+    actions: ButlerAction[];
+}
 
 export class AddCalendarTrigger implements Trigger {
+    private static pendingConfirmations = new Map<string, PendingConfirmation>();
+
+    constructor(private readonly jobStore: JobStore) {}
+
     public triggered(msg: Message): boolean {
         if (!msg.content || msg.author.bot) return false;
         if (!Config.developers.includes(msg.author.id)) return false;
-        return ADD_CALENDAR_REGEX.test(msg.content.trim());
+
+        const trimmed = msg.content.trim();
+        if (CONFIRM_REGEX.test(trimmed)) return true;
+        if (ADD_CALENDAR_REGEX.test(trimmed)) return true;
+        if (!Config.localLlm.enabled) return false;
+
+        if (SCHEDULING_HINT_REGEX.test(trimmed)) return true;
+        const chronoResults = chrono.parse(trimmed, new Date(), { forwardDate: true });
+        return chronoResults.length > 0;
     }
 
     public async execute(msg: Message): Promise<void> {
-        const match = msg.content.trim().match(ADD_CALENDAR_REGEX);
-        if (!match) return;
-
-        if (!Config.gCalendar) {
-            await this.sendReply(msg, 'Calendar integration is not configured.');
+        const trimmed = msg.content.trim();
+        const confirmMatch = trimmed.match(CONFIRM_REGEX);
+        if (confirmMatch) {
+            await this.executePendingConfirmation(msg, confirmMatch[1]);
             return;
         }
 
-        const body = match[1].trim();
+        const match = trimmed.match(ADD_CALENDAR_REGEX);
+        const body = (match?.[1] ?? trimmed).trim();
+
         if (!body) {
-            await this.sendReply(
-                msg,
-                'Please add a description and time, e.g. `add calendar dentist appointment Wednesday 3 pm`.'
-            );
+            await this.sendReply(msg, 'Please share what you want to schedule.');
+            return;
+        }
+
+        const now = new Date();
+
+        if (Config.localLlm.enabled) {
+            try {
+                const toolResult = await runButlerToolLoop(Config.localLlm, this.jobStore, {
+                    text: body,
+                    userId: msg.author.id,
+                    channelId: msg.channelId,
+                    nowIso: now.toISOString(),
+                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+                });
+
+                if (toolResult.pendingConfirmation.length > 0) {
+                    const token = this.createConfirmationToken();
+                    AddCalendarTrigger.pendingConfirmations.set(token, {
+                        userId: msg.author.id,
+                        channelId: msg.channelId,
+                        createdAtMs: Date.now(),
+                        actions: toolResult.pendingConfirmation,
+                    });
+                    await this.sendReply(
+                        msg,
+                        this.buildConfirmationEmbed(
+                            token,
+                            toolResult.pendingConfirmation,
+                            toolResult.confirmationReason
+                        )
+                    );
+                    return;
+                }
+
+                if (toolResult.executed.length > 0) {
+                    await this.sendReply(msg, this.buildExecutionEmbed('Scheduled', toolResult.executed));
+                    return;
+                }
+
+                if (toolResult.assistantText.trim()) {
+                    await this.sendReply(msg, toolResult.assistantText.trim());
+                    return;
+                }
+            } catch (err: unknown) {
+                Logger.warn('Butler tool loop failed; falling back to existing parser.', {
+                    error: unknownToErrorMessage(err),
+                });
+            }
+        }
+
+        if (!Config.gCalendar) {
+            await this.sendReply(msg, 'Calendar integration is not configured.');
             return;
         }
 
@@ -50,12 +140,9 @@ export class AddCalendarTrigger implements Trigger {
             return;
         }
 
-        const now = new Date();
         const chronoResults = chrono.parse(body, now, { forwardDate: true });
 
         try {
-            // When LOCAL_LLM_ENABLED=true, always try Ollama first (not only "multi-looking"
-            // messages). Single-event phrases were previously skipped and never hit the LLM.
             if (Config.localLlm.enabled) {
                 const parsed = await parseEventsWithLocalLlm(Config.localLlm, {
                     text: body,
@@ -140,7 +227,7 @@ export class AddCalendarTrigger implements Trigger {
             if (!chronoResults || chronoResults.length === 0) {
                 await this.sendReply(
                     msg,
-                    "I couldn't find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`."
+                    'I couldn\'t find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`.'
                 );
                 return;
             }
@@ -183,6 +270,84 @@ export class AddCalendarTrigger implements Trigger {
                 'Failed to add the event. Check that you have authorized the bot with `/gcalendar` and try again.'
             );
         }
+    }
+
+    private async executePendingConfirmation(msg: Message, token: string): Promise<void> {
+        const pending = AddCalendarTrigger.pendingConfirmations.get(token);
+        if (!pending) {
+            await this.sendReply(msg, 'Confirmation token not found. Ask me to schedule it again.');
+            return;
+        }
+        if (pending.userId !== msg.author.id || pending.channelId !== msg.channelId) {
+            await this.sendReply(msg, 'That confirmation token is not valid in this conversation.');
+            return;
+        }
+        if (Date.now() - pending.createdAtMs > CONFIRM_TTL_MS) {
+            AddCalendarTrigger.pendingConfirmations.delete(token);
+            await this.sendReply(msg, 'Confirmation token expired. Please send the request again.');
+            return;
+        }
+
+        AddCalendarTrigger.pendingConfirmations.delete(token);
+        const executed = await executeButlerActions(pending.actions, this.jobStore, {
+            userId: msg.author.id,
+            channelId: msg.channelId,
+        });
+        await this.sendReply(msg, this.buildExecutionEmbed('Scheduled after confirmation', executed));
+    }
+
+    private buildConfirmationEmbed(
+        token: string,
+        actions: ButlerAction[],
+        reason?: string
+    ): EmbedBuilder {
+        const lines = actions.map(action => {
+            if (action.kind === 'create_calendar_event') {
+                return `- Calendar: **${action.summary}** at ${action.start}`;
+            }
+            return `- Reminder: **${action.text}** at ${action.when}`;
+        });
+
+        const reasonLine =
+            reason === 'multiple_actions'
+                ? 'This request has multiple actions.'
+                : reason === 'reminder_requires_confirmation'
+                  ? 'Reminders require confirmation.'
+                  : 'This action needs confirmation.';
+
+        return new EmbedBuilder()
+            .setTitle('Confirm scheduling actions')
+            .setDescription(
+                [reasonLine, '', ...lines, '', `Reply with \`confirm ${token}\` to run these.`].join(
+                    '\n'
+                )
+            )
+            .setColor('#f2b01e');
+    }
+
+    private buildExecutionEmbed(
+        title: string,
+        executions: Array<{ ok: boolean; summary: string; when: string; link?: string; error?: string }>
+    ): EmbedBuilder {
+        const success = executions.filter(x => x.ok);
+        const failed = executions.filter(x => !x.ok);
+
+        const lines = success.map(x => `- **${x.summary}** at ${x.when}${x.link ? `\n  ${x.link}` : ''}`);
+        if (failed.length > 0) {
+            lines.push(
+                '',
+                ...failed.slice(0, 5).map(x => `- Failed **${x.summary}**: ${x.error ?? 'Unknown error'}`)
+            );
+        }
+
+        return new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(lines.length > 0 ? lines.join('\n') : '(No actions were run.)')
+            .setColor(success.length > 0 ? '#4285F4' : '#ff4a4a');
+    }
+
+    private createConfirmationToken(): string {
+        return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     }
 
     private async sendReauthEmbed(msg: Message, authUrl: string): Promise<void> {

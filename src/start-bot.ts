@@ -9,7 +9,7 @@ import { OAuthController, RootController } from './controllers/index.js';
 import { CommandHandler, MessageHandler, TriggerHandler } from './events/index.js';
 import { Api } from './models/api.js';
 import { Bot } from './models/bot.js';
-import { CommandRegistrationService, Logger } from './services/index.js';
+import { CommandRegistrationService, JobRunner, JobStore, Logger } from './services/index.js';
 import { logLocalLlmOllamaProbe } from './services/local-llm-event-parser.js';
 import { AddCalendarTrigger, Trigger } from './triggers/index.js';
 
@@ -29,7 +29,11 @@ async function start(): Promise<void> {
 
     let commands: Command[] = [new GCalendarCommand()];
 
-    let triggers: Trigger[] = [new AddCalendarTrigger()];
+    const jobStore = new JobStore(Config.reminderJobs.storePath);
+    const jobRunner = new JobRunner(client, jobStore, Config.reminderJobs.pollIntervalMs);
+    jobRunner.start();
+
+    let triggers: Trigger[] = [new AddCalendarTrigger(jobStore)];
 
     let commandHandler = new CommandHandler(commands);
     let triggerHandler = new TriggerHandler(triggers);
