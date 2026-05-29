@@ -10,7 +10,7 @@ import { CommandHandler, MessageHandler, TriggerHandler } from './events/index.j
 import { Api } from './models/api.js';
 import { Bot } from './models/bot.js';
 import { CommandRegistrationService, JobRunner, JobStore, Logger } from './services/index.js';
-import { logLocalLlmOllamaProbe } from './services/local-llm-event-parser.js';
+import { logLlmProbe } from './services/llm-chat-client.js';
 import { AddCalendarTrigger, Trigger } from './triggers/index.js';
 
 const require = createRequire(import.meta.url);
@@ -52,7 +52,7 @@ async function start(): Promise<void> {
         await api.start();
     }
 
-    await logLocalLlmOllamaProbe(Config.localLlm);
+    await logLlmProbe(Config.localLlm);
 
     if (process.argv[2] == 'commands') {
         try {

@@ -4,10 +4,7 @@ import { EmbedBuilder, Message } from 'discord.js';
 import Config from '../config.js';
 import { Trigger } from './trigger.js';
 import { insertEvent } from '../services/calendar-service.js';
-import {
-    CalendarReauthRequiredError,
-    getAuthenticatedClient,
-} from '../services/gcalendar-auth.js';
+import { CalendarReauthRequiredError, getAuthenticatedClient } from '../services/gcalendar-auth.js';
 import { JobStore } from '../services/job-store.js';
 import {
     ButlerAction,
@@ -107,7 +104,10 @@ export class AddCalendarTrigger implements Trigger {
                 }
 
                 if (toolResult.executed.length > 0) {
-                    await this.sendReply(msg, this.buildExecutionEmbed('Scheduled', toolResult.executed));
+                    await this.sendReply(
+                        msg,
+                        this.buildExecutionEmbed('Scheduled', toolResult.executed)
+                    );
                     return;
                 }
 
@@ -186,8 +186,7 @@ export class AddCalendarTrigger implements Trigger {
                             }
                             failed.push({
                                 summary: e.summary,
-                                reason:
-                                    err instanceof Error ? err.message : 'Unknown error',
+                                reason: err instanceof Error ? err.message : 'Unknown error',
                             });
                         }
                     }
@@ -227,7 +226,7 @@ export class AddCalendarTrigger implements Trigger {
             if (!chronoResults || chronoResults.length === 0) {
                 await this.sendReply(
                     msg,
-                    'I couldn\'t find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`.'
+                    "I couldn't find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`."
                 );
                 return;
             }
@@ -248,9 +247,7 @@ export class AddCalendarTrigger implements Trigger {
                 allDay,
             });
 
-            const dateString = allDay
-                ? startDate.toLocaleDateString()
-                : startDate.toLocaleString();
+            const dateString = allDay ? startDate.toLocaleDateString() : startDate.toLocaleString();
             const timePrefix = allDay ? 'on' : 'at';
 
             const embed = new EmbedBuilder()
@@ -293,7 +290,10 @@ export class AddCalendarTrigger implements Trigger {
             userId: msg.author.id,
             channelId: msg.channelId,
         });
-        await this.sendReply(msg, this.buildExecutionEmbed('Scheduled after confirmation', executed));
+        await this.sendReply(
+            msg,
+            this.buildExecutionEmbed('Scheduled after confirmation', executed)
+        );
     }
 
     private buildConfirmationEmbed(
@@ -318,25 +318,39 @@ export class AddCalendarTrigger implements Trigger {
         return new EmbedBuilder()
             .setTitle('Confirm scheduling actions')
             .setDescription(
-                [reasonLine, '', ...lines, '', `Reply with \`confirm ${token}\` to run these.`].join(
-                    '\n'
-                )
+                [
+                    reasonLine,
+                    '',
+                    ...lines,
+                    '',
+                    `Reply with \`confirm ${token}\` to run these.`,
+                ].join('\n')
             )
             .setColor('#f2b01e');
     }
 
     private buildExecutionEmbed(
         title: string,
-        executions: Array<{ ok: boolean; summary: string; when: string; link?: string; error?: string }>
+        executions: Array<{
+            ok: boolean;
+            summary: string;
+            when: string;
+            link?: string;
+            error?: string;
+        }>
     ): EmbedBuilder {
         const success = executions.filter(x => x.ok);
         const failed = executions.filter(x => !x.ok);
 
-        const lines = success.map(x => `- **${x.summary}** at ${x.when}${x.link ? `\n  ${x.link}` : ''}`);
+        const lines = success.map(
+            x => `- **${x.summary}** at ${x.when}${x.link ? `\n  ${x.link}` : ''}`
+        );
         if (failed.length > 0) {
             lines.push(
                 '',
-                ...failed.slice(0, 5).map(x => `- Failed **${x.summary}**: ${x.error ?? 'Unknown error'}`)
+                ...failed
+                    .slice(0, 5)
+                    .map(x => `- Failed **${x.summary}**: ${x.error ?? 'Unknown error'}`)
             );
         }
 
