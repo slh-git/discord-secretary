@@ -1,15 +1,14 @@
-import http from 'node:http';
-import https from 'node:https';
-import { URL } from 'node:url';
-
+import {
+    chat,
+    type LlmConfig,
+    type LocalLlmConfig,
+    logLlmProbe,
+    logLocalLlmOllamaProbe,
+} from './llm-chat-client.js';
 import { Logger } from './logger.js';
 
-export interface LocalLlmConfig {
-    enabled: boolean;
-    baseUrl: string;
-    model: string;
-    timeoutMs: number;
-}
+export type { LlmConfig, LocalLlmConfig };
+export { logLlmProbe, logLocalLlmOllamaProbe };
 
 export interface ParsedEvent {
     summary: string;
@@ -50,181 +49,11 @@ function parseEventsPayloadFromContent(content: string): unknown | undefined {
 }
 
 /**
- * POST JSON with a **wall-clock** timeout from request start.
- *
- * Shared by both:
- * - structured JSON extraction (`format: "json"`)
- * - tool loop requests (`tools` in request, `message.tool_calls` in response)
- *
- * Node's built-in `timeout` on `http.request` is socket *inactivity*: while Ollama
- * (or any LLM) runs inference it sends nothing, so the client sees an "idle"
- * socket and hits the limit long before the model finishes. A single timer
- * matches how people set `LOCAL_LLM_TIMEOUT_MS` (total wait for a reply).
- */
-export function postJson<TResponse>(
-    urlString: string,
-    body: unknown,
-    timeoutMs: number
-): Promise<TResponse> {
-    return new Promise((resolve, reject) => {
-        const url = new URL(urlString);
-        const data = JSON.stringify(body);
-        const lib = url.protocol === 'https:' ? https : http;
-
-        let settled = false;
-        const finish = (fn: () => void) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(deadline);
-            fn();
-        };
-
-        let req: http.ClientRequest;
-        const deadline = setTimeout(() => {
-            req?.destroy(new Error('Request timed out'));
-        }, timeoutMs);
-
-        req = lib.request(
-            {
-                protocol: url.protocol,
-                hostname: url.hostname,
-                port: url.port,
-                path: `${url.pathname}${url.search}`,
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(data),
-                },
-            },
-            res => {
-                let raw = '';
-                res.setEncoding('utf8');
-                res.on('data', chunk => (raw += chunk));
-                res.on('end', () => {
-                    if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                        try {
-                            finish(() => resolve(JSON.parse(raw) as TResponse));
-                        } catch (err) {
-                            finish(() => reject(err));
-                        }
-                        return;
-                    }
-                    finish(() =>
-                        reject(new Error(`HTTP ${res.statusCode ?? 'unknown'}: ${raw}`))
-                    );
-                });
-                res.on('error', err => finish(() => reject(err)));
-            }
-        );
-
-        req.on('error', err => finish(() => reject(err)));
-        req.write(data);
-        req.end();
-    });
-}
-
-function getJson<TResponse>(urlString: string, timeoutMs: number): Promise<TResponse> {
-    return new Promise((resolve, reject) => {
-        const url = new URL(urlString);
-        const lib = url.protocol === 'https:' ? https : http;
-
-        const req = lib.request(
-            {
-                protocol: url.protocol,
-                hostname: url.hostname,
-                port: url.port,
-                path: `${url.pathname}${url.search}`,
-                method: 'GET',
-                headers: { Accept: 'application/json' },
-                timeout: timeoutMs,
-            },
-            res => {
-                let raw = '';
-                res.setEncoding('utf8');
-                res.on('data', chunk => (raw += chunk));
-                res.on('end', () => {
-                    if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                        try {
-                            resolve(JSON.parse(raw) as TResponse);
-                        } catch (err) {
-                            reject(err);
-                        }
-                        return;
-                    }
-                    reject(new Error(`HTTP ${res.statusCode ?? 'unknown'}: ${raw}`));
-                });
-            }
-        );
-
-        req.on('error', reject);
-        req.on('timeout', () => {
-            req.destroy(new Error('Request timed out'));
-        });
-        req.end();
-    });
-}
-
-type OllamaTagsResponse = { models?: Array<{ name?: string; model?: string }> };
-
-/**
- * On startup, check that Ollama's `/api/tags` includes `config.model`.
- * The bot does not auto-pick a model: `LOCAL_LLM_MODEL` must match `ollama list` exactly.
- */
-export async function logLocalLlmOllamaProbe(config: LocalLlmConfig): Promise<void> {
-    if (!config.enabled) return;
-
-    const tagsUrl = new URL('/api/tags', config.baseUrl).toString();
-    const shortTimeout = Math.min(10_000, config.timeoutMs);
-
-    let data: OllamaTagsResponse;
-    try {
-        data = await getJson<OllamaTagsResponse>(tagsUrl, shortTimeout);
-    } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        Logger.warn(
-            'Local LLM is enabled but Ollama was not reached at /api/tags. Is Ollama running and is LOCAL_LLM_BASE_URL correct?',
-            { baseUrl: config.baseUrl, error: message }
-        );
-        return;
-    }
-
-    const names = (data.models ?? [])
-        .map(m => m.name ?? m.model)
-        .filter((n): n is string => Boolean(n));
-    const wanted = config.model.trim();
-    const found = names.some(n => n === wanted);
-
-    if (found) {
-        Logger.info('Local LLM: Ollama has the configured model.', {
-            model: wanted,
-            baseUrl: config.baseUrl,
-        });
-        return;
-    }
-
-    const sample = names.slice(0, 15).join(', ') || '(none reported)';
-    Logger.warn(
-        'Local LLM: no model tag matches LOCAL_LLM_MODEL. The bot will still call /api/chat, but Ollama will error until the name matches `ollama list` exactly (e.g. gemma45:e2b).',
-        {
-            configured: wanted,
-            ollamaReports: sample,
-            totalListed: names.length,
-        }
-    );
-}
-
-/**
- * Parse "add event..." free-text into one or more calendar events using a local LLM.
- *
- * This is tuned for Ollama's `/api/chat` endpoint:
- * - baseUrl default: http://127.0.0.1:11434
- * - request: { model, stream:false, format:"json", messages:[...] }
- * - response: { message: { content: "<json string>" } }
- *
- * If your local server differs, adapt `endpoint` and response parsing.
+ * Parse "add event..." free-text into one or more calendar events using an LLM
+ * (Ollama or OpenRouter).
  */
 export async function parseEventsWithLocalLlm(
-    config: LocalLlmConfig,
+    config: LlmConfig,
     input: {
         text: string;
         nowIso: string;
@@ -233,7 +62,6 @@ export async function parseEventsWithLocalLlm(
 ): Promise<ParsedEvent[]> {
     if (!config.enabled) return [];
 
-    const endpoint = new URL('/api/chat', config.baseUrl).toString();
     const schema = {
         type: 'object',
         additionalProperties: false,
@@ -261,6 +89,7 @@ export async function parseEventsWithLocalLlm(
         'You extract Google Calendar events from a user message.',
         'Return ONLY valid JSON matching the provided schema.',
         'Interpret relative dates using nowIso and timeZone.',
+        'For timed events, always include timezone offset in start/end (e.g. -04:00 or Z).',
         'If the user lists multiple events joined by "and", split them into separate events.',
         'If time is omitted, set allDay=true and use an all-day date (YYYY-MM-DD) as start.',
         'If duration is omitted for timed events, omit end.',
@@ -293,32 +122,22 @@ export async function parseEventsWithLocalLlm(
         2
     );
 
-    type ChatResponse = {
-        message?: { content?: string };
-        output?: string;
-        response?: string;
-    };
-
-    let res: ChatResponse;
+    let contentStr: string;
     try {
-        res = await postJson<ChatResponse>(
-            endpoint,
-            {
-                model: config.model,
-                stream: false,
-                format: 'json',
-                messages: [
-                    { role: 'system', content: system },
-                    { role: 'user', content: user },
-                ],
-            },
-            config.timeoutMs
+        const res = await chat(
+            config,
+            [
+                { role: 'system', content: system },
+                { role: 'user', content: user },
+            ],
+            { responseFormat: 'json' }
         );
+        contentStr = res.content;
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         const isTimeout = /timed out|timeout/i.test(message);
-        Logger.warn('Local LLM request failed; falling back to chrono if applicable.', {
-            endpoint,
+        Logger.warn('LLM request failed; falling back to chrono if applicable.', {
+            provider: config.provider,
             model: config.model,
             error: message,
             timeoutMs: config.timeoutMs,
@@ -331,14 +150,12 @@ export async function parseEventsWithLocalLlm(
         return [];
     }
 
-    const content = res.message?.content ?? res.output ?? res.response;
-    if (content == null || content === '') return [];
-
-    const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+    if (contentStr === '') return [];
 
     const parsed = parseEventsPayloadFromContent(contentStr);
     if (parsed == null || typeof parsed !== 'object') {
-        Logger.warn('Local LLM returned content that is not valid JSON with an events array.', {
+        Logger.warn('LLM returned content that is not valid JSON with an events array.', {
+            provider: config.provider,
             model: config.model,
             preview: contentStr.slice(0, 200),
         });
@@ -358,4 +175,3 @@ export async function parseEventsWithLocalLlm(
         }))
         .filter(e => e.summary.length > 0 && e.start.length > 0);
 }
-

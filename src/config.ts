@@ -63,17 +63,13 @@ const config = {
             process.env.LOCAL_LLM_ENABLED !== undefined && process.env.LOCAL_LLM_ENABLED !== ''
                 ? process.env.LOCAL_LLM_ENABLED.toLowerCase() === 'true'
                 : Boolean(fileLocalLlm.enabled),
-        baseUrl:
-            process.env.LOCAL_LLM_BASE_URL ??
-            fileLocalLlm.baseUrl ??
-            'http://127.0.0.1:11434',
+        baseUrl: process.env.LOCAL_LLM_BASE_URL ?? fileLocalLlm.baseUrl ?? 'http://127.0.0.1:11434',
         model: process.env.LOCAL_LLM_MODEL ?? fileLocalLlm.model ?? 'gemma:2b',
         timeoutMs:
             Number(process.env.LOCAL_LLM_TIMEOUT_MS ?? fileLocalLlm.timeoutMs ?? '300000') ||
             300000,
         toolMaxRounds:
-            Number(process.env.LOCAL_LLM_TOOL_MAX_ROUNDS ?? fileLocalLlm.toolMaxRounds ?? '5') ||
-            5,
+            Number(process.env.LOCAL_LLM_TOOL_MAX_ROUNDS ?? fileLocalLlm.toolMaxRounds ?? '5') || 5,
     },
     reminderJobs: {
         storePath:
@@ -81,8 +77,11 @@ const config = {
             fileConfig.reminderJobs?.storePath ??
             path.join(process.cwd(), 'data', 'reminder-jobs.json'),
         pollIntervalMs:
-            Number(process.env.REMINDER_JOB_POLL_MS ?? fileConfig.reminderJobs?.pollIntervalMs ?? '15000') ||
-            15000,
+            Number(
+                process.env.REMINDER_JOB_POLL_MS ??
+                    fileConfig.reminderJobs?.pollIntervalMs ??
+                    '15000'
+            ) || 15000,
     },
 };
 

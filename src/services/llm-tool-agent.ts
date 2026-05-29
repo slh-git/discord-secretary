@@ -1,9 +1,14 @@
-import { URL } from 'node:url';
-
 import { insertEvent } from './calendar-service.js';
 import { JobStore } from './job-store.js';
-import { LocalLlmConfig, postJson } from './local-llm-event-parser.js';
+import {
+    chat,
+    createToolResultMessage,
+    type LlmConfig,
+    type LlmMessage,
+    type LlmToolCall,
+} from './llm-chat-client.js';
 import { Logger } from './logger.js';
+import { formatInTimeZone, parseIsoInTimeZone } from './time-zone.js';
 
 export interface ButlerAgentInput {
     text: string;
@@ -58,31 +63,8 @@ interface ToolDefinition {
     };
 }
 
-interface ToolCall {
-    function?: {
-        name?: string;
-        arguments?: unknown;
-    };
-}
-
-interface ChatMessage {
-    role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string;
-    tool_calls?: ToolCall[];
-    tool_name?: string;
-}
-
-interface ChatResponse {
-    message?: {
-        content?: string;
-        tool_calls?: ToolCall[];
-    };
-}
-
-const DEFAULT_MAX_ROUNDS = 5;
-
 export async function runButlerToolLoop(
-    config: LocalLlmConfig,
+    config: LlmConfig,
     jobStore: JobStore,
     input: ButlerAgentInput,
     options?: { forceExecuteRisky?: boolean; maxRounds?: number }
@@ -95,10 +77,9 @@ export async function runButlerToolLoop(
         };
     }
 
-    const endpoint = new URL('/api/chat', config.baseUrl).toString();
-    const maxRounds = Math.max(1, options?.maxRounds ?? DEFAULT_MAX_ROUNDS);
+    const maxRounds = Math.max(1, options?.maxRounds ?? config.toolMaxRounds);
     const tools = buildTools();
-    const messages: ChatMessage[] = [
+    const messages: LlmMessage[] = [
         { role: 'system', content: buildSystemPrompt() },
         {
             role: 'user',
@@ -118,25 +99,26 @@ export async function runButlerToolLoop(
     let assistantText = '';
 
     for (let round = 0; round < maxRounds; round++) {
-        const response = await postJson<ChatResponse>(
-            endpoint,
-            {
+        let response;
+        try {
+            response = await chat(config, messages, { tools });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            Logger.warn('Butler tool loop LLM request failed.', {
+                provider: config.provider,
                 model: config.model,
-                stream: false,
-                messages,
-                tools,
-            },
-            config.timeoutMs
-        );
+                error: message,
+            });
+            throw err;
+        }
 
-        const content = response.message?.content ?? '';
-        const toolCalls = response.message?.tool_calls ?? [];
+        const { content, toolCalls } = response;
         assistantText = content || assistantText;
 
         messages.push({
             role: 'assistant',
             content,
-            tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
         });
 
         if (toolCalls.length === 0) {
@@ -147,24 +129,26 @@ export async function runButlerToolLoop(
             };
         }
 
-        const actions: ButlerAction[] = [];
+        const parsedCalls: Array<{ call: LlmToolCall; action?: ButlerAction }> = [];
         for (const call of toolCalls) {
-            const parsed = parseToolCall(call);
-            if (!parsed) {
-                messages.push({
-                    role: 'tool',
-                    tool_name: call.function?.name ?? 'unknown',
-                    content: JSON.stringify({ ok: false, error: 'Invalid tool call arguments' }),
-                });
+            const action = parseToolCall(call);
+            if (!action) {
+                messages.push(
+                    createToolResultMessage(config, call, JSON.stringify({
+                        ok: false,
+                        error: 'Invalid tool call arguments',
+                    }))
+                );
                 continue;
             }
-            actions.push(parsed);
+            parsedCalls.push({ call, action });
         }
 
-        if (actions.length === 0) {
+        if (parsedCalls.length === 0) {
             continue;
         }
 
+        const actions = parsedCalls.map(p => p.action!);
         const needsConfirmation = !options?.forceExecuteRisky && isRisky(actions);
         if (needsConfirmation) {
             return {
@@ -178,18 +162,19 @@ export async function runButlerToolLoop(
         const runResults = await executeButlerActions(actions, jobStore, input);
         executed.push(...runResults);
 
-        for (const result of runResults) {
-            messages.push({
-                role: 'tool',
-                tool_name: result.kind,
-                content: JSON.stringify(result),
-            });
+        let resultIdx = 0;
+        for (const { call } of parsedCalls) {
+            const result = runResults[resultIdx++];
+            messages.push(
+                createToolResultMessage(config, call, JSON.stringify(result))
+            );
         }
     }
 
     Logger.warn('Butler tool loop hit max rounds before completion.', {
         maxRounds,
         model: config.model,
+        provider: config.provider,
     });
     return {
         assistantText,
@@ -201,17 +186,21 @@ export async function runButlerToolLoop(
 export async function executeButlerActions(
     actions: ButlerAction[],
     jobStore: JobStore,
-    input: Pick<ButlerAgentInput, 'userId' | 'channelId'>
+    input: Pick<ButlerAgentInput, 'userId' | 'channelId' | 'timeZone'>
 ): Promise<ButlerAgentExecution[]> {
     const results: ButlerAgentExecution[] = [];
 
     for (const action of actions) {
         if (action.kind === 'create_calendar_event') {
             const allDay = action.allDay === true || /^\d{4}-\d{2}-\d{2}$/.test(action.start);
-            const start = new Date(allDay ? `${action.start}T00:00:00.000Z` : action.start);
+            const start = allDay
+                ? new Date(`${action.start}T00:00:00.000Z`)
+                : parseIsoInTimeZone(action.start, input.timeZone);
             const end =
                 action.end != null
-                    ? new Date(allDay ? `${action.end}T00:00:00.000Z` : action.end)
+                    ? allDay
+                        ? new Date(`${action.end}T00:00:00.000Z`)
+                        : parseIsoInTimeZone(action.end, input.timeZone)
                     : undefined;
 
             if (Number.isNaN(start.getTime())) {
@@ -236,7 +225,7 @@ export async function executeButlerActions(
                     kind: action.kind,
                     ok: true,
                     summary: action.summary,
-                    when: allDay ? start.toLocaleDateString() : start.toLocaleString(),
+                    when: formatInTimeZone(start, input.timeZone, !allDay),
                     link: htmlLink,
                 });
             } catch (err: unknown) {
@@ -251,7 +240,7 @@ export async function executeButlerActions(
             continue;
         }
 
-        const dueAt = new Date(action.when);
+        const dueAt = parseIsoInTimeZone(action.when, input.timeZone);
         if (Number.isNaN(dueAt.getTime())) {
             results.push({
                 kind: action.kind,
@@ -274,7 +263,7 @@ export async function executeButlerActions(
                 kind: action.kind,
                 ok: true,
                 summary: action.text,
-                when: dueAt.toLocaleString(),
+                when: formatInTimeZone(dueAt, input.timeZone, true),
                 jobId: job.id,
             });
         } catch (err: unknown) {
@@ -291,12 +280,11 @@ export async function executeButlerActions(
     return results;
 }
 
-function parseToolCall(call: ToolCall): ButlerAction | undefined {
-    const name = call.function?.name;
-    const args = parseToolArguments(call.function?.arguments);
-    if (!name || !args) return undefined;
+function parseToolCall(call: LlmToolCall): ButlerAction | undefined {
+    const args = parseToolArguments(call.arguments);
+    if (!args) return undefined;
 
-    if (name === 'create_calendar_event') {
+    if (call.name === 'create_calendar_event') {
         const summary = toTrimmedString(args.summary);
         const start = toTrimmedString(args.start);
         if (!summary || !start) return undefined;
@@ -310,7 +298,7 @@ function parseToolCall(call: ToolCall): ButlerAction | undefined {
         };
     }
 
-    if (name === 'schedule_reminder') {
+    if (call.name === 'schedule_reminder') {
         const when = toTrimmedString(args.when);
         const text = toTrimmedString(args.text);
         if (!when || !text) return undefined;
@@ -379,6 +367,7 @@ function buildSystemPrompt(): string {
         'Call create_calendar_event for calendar entries.',
         'Call schedule_reminder for reminder messages.',
         'Always use ISO-8601 for start/end/when.',
+        'For timed events and reminders, include timezone offset (e.g. -04:00 or Z).',
         'If a date is all-day, use YYYY-MM-DD and set allDay=true.',
         'If information is missing, ask a concise follow-up question in plain text.',
         'Do not invent fields outside tool schemas.',
