@@ -1,493 +1,133 @@
-# Handoff (Simple Version)
+# Rewrite Handoff (minimal)
 
-## What Are We Building?
-
-A central backend platform that contains all business logic.
-
-Different interfaces connect to it:
+**Greenfield rewrite** — not the current repo. One backend owns all business logic; clients are thin API adapters.
 
 ```text
-Discord
-Web
-Mobile
-Future Apps
+Clients (Discord/Web/Mobile) → Fastify API → Services → PostgreSQL
+                                      Services → Event Bus → Plugins
 ```
 
-All interfaces use the same backend.
-
-Goal:
-
-```text
-Write logic once
-Use it everywhere
-```
-
-Example:
-
-```text
-User creates task in Discord
-
-Task immediately exists for:
-- Web App
-- Mobile App
-- Future Integrations
-```
-
-because everything talks to the same backend.
+**Rule:** logic in services only. Clients/plugins never touch DB. Services emit events; plugins subscribe (services don't know plugins exist).
 
 ---
 
-# Simple Mental Model
+## Stack
 
-Think of the backend as a game engine.
+TypeScript · Fastify · PostgreSQL · Drizzle · Docker Compose · discord.js (v1 client)  
+Later: Next.js, React Native, Redis (v2+)
 
-```text
-Game Engine
-    ↑
-Controllers
-Keyboard
-Mouse
-Gamepad
-```
-
-The controllers are different.
-
-The engine is shared.
-
-Our architecture:
-
-```text
-Backend
-    ↑
-Discord
-Web
-Mobile
-```
+**Avoid v1:** microservices, Kafka/RabbitMQ, CQRS, command bus, event sourcing, K8s, plugin marketplace.
 
 ---
 
-# Why We Do NOT Want Business Logic In Clients
-
-Bad:
+## Repo (monorepo)
 
 ```text
-Discord knows how tasks work
-
-Web knows how tasks work
-
-Mobile knows how tasks work
+apps/api/src/     api/ users/ permissions/ messages/ plugins/ events/ database/
+apps/discord/     thin client — API calls only, no domain logic
+packages/shared/  Event, DTOs, error types
 ```
 
-Now every app duplicates logic.
-
-Changing behavior means updating:
-
-* Discord
-* Web
-* Mobile
-
-Good:
-
-```text
-Backend knows how tasks work
-```
-
-Clients only send requests.
+v2: `apps/web/`, `apps/mobile/`
 
 ---
 
-# Architecture
+## Domains
 
-```text
-Client
-   ↓
-API
-   ↓
-Service
-   ↓
-Database
-```
-
-Example:
-
-```text
-Discord
-   ↓
-POST /task
-   ↓
-Task Service
-   ↓
-Database
-```
-
-Simple.
+**v1:** `users` `permissions` `messages` `plugins`  
+**Later:** `tasks` `calendar` `ai` `workflows` `knowledge` — add only when needed.  
+(Task examples elsewhere = pattern only; **messages** is the v1 domain.)
 
 ---
 
-# What Is A Service?
+## V1 slice
 
-A service owns business logic.
+**Ship:** DM-only Discord bot → `POST /api/messages` → persist → `message.received` → 1 reference plugin.  
+**Not v1:** tasks, calendar, ai, web, mobile, Redis, background jobs.
 
-Examples:
+**Flow:** DM → `apps/discord` → auth → rate limit → MessageService (validate, permission check, save) → emit event → plugin.
+
+**Done when:** migrations applied; `/health` + `/api/messages` work; Discord user auto-provisioned; non-developers rejected; plugin handles `message.received`; discord app has zero DB/domain logic; README + `docker compose up` documented.
+
+---
+
+## Auth (v1)
 
 ```text
-User Service
-Task Service
-Message Service
-Permission Service
+Authorization: Bearer <DISCORD_SERVICE_API_KEY>
+X-Discord-User-Id: <snowflake>
 ```
 
-Example:
+Service key = discord app. Header = acting user (resolve/create in `users/`). No user JWT in v1.  
+v2+: JWT via Discord OAuth (same user records). Keys env-only.
+
+---
+
+## API
+
+Prefix `/api`. Middleware: **Auth → Rate limit → Router → Service**.
+
+| Route | Purpose |
+|-------|---------|
+| `GET /health` | Liveness |
+| `POST /api/messages` | Inbound DM |
+| `GET /api/users/me` | From `X-Discord-User-Id` |
+
+JSON only. Errors: `{ "error": { "code": "PERMISSION_DENIED", "message": "..." } }`. No versioning until breaking change needed.
+
+---
+
+## Data
+
+`Service → Repository → PostgreSQL`. Drizzle migrations in `database/migrations/`. Services own transactions/rules. Plugins: no DB/repos in v1 — use event payload.
+
+---
+
+## Events
+
+Naming: `domain.action` past tense (`message.received`, `user.created`).
 
 ```ts
-taskService.createTask()
-```
-
-The service:
-
-* validates input
-* applies business rules
-* saves data
-* emits events
-
-The service owns the operation.
-
----
-
-# Why We Use Events
-
-When something important happens:
-
-```text
-Task Created
-User Registered
-Message Received
-```
-
-the service emits an event.
-
-Example:
-
-```ts
-eventBus.emit(
-  "task.created",
-  task
-)
-```
-
-The service does not care who listens.
-
-This keeps the system loosely coupled.
-
----
-
-# What Is An Event?
-
-An event is simply:
-
-```text
-Something happened
-```
-
-Examples:
-
-```text
-user.created
-task.created
-task.completed
-message.received
-permission.updated
-```
-
-Events are facts.
-
-Not requests.
-
----
-
-# Why Plugins Exist
-
-We want to add functionality later without modifying core services.
-
-Example:
-
-Core service:
-
-```text
-Task Created
-```
-
-Plugin A:
-
-```text
-Send Discord Notification
-```
-
-Plugin B:
-
-```text
-Create Analytics Record
-```
-
-Plugin C:
-
-```text
-Schedule Reminder
-```
-
-The task service knows nothing about those plugins.
-
----
-
-# Event Flow
-
-```text
-Task Service
-     ↓
- task.created
-     ↓
- Event Bus
-     ↓
- ├── Notification Plugin
- ├── Analytics Plugin
- └── Reminder Plugin
-```
-
-Services publish events.
-
-Plugins subscribe to events.
-
----
-
-# Example
-
-Task Service:
-
-```ts
-async function createTask(task) {
-  await db.tasks.create(task)
-
-  eventBus.emit(
-    "task.created",
-    task
-  )
+interface Event<T = unknown> {
+  id: string; type: string; timestamp: number; source: string; payload: T;
 }
 ```
 
-Plugin:
+Service pattern: save → `eventBus.emit(type, event)`. Facts, not commands.
+
+---
+
+## Plugins
+
+Loaded at API startup: scan `plugins/installed/` → `registry.register` → `eventBus.on` per handler.
 
 ```ts
-eventBus.on(
-  "task.created",
-  async (task) => {
-    sendNotification(task)
-  }
-)
+export default {
+  name: "reference-plugin",
+  events: { "message.received": async (event, ctx) => { /* ctx: logger, config only */ } },
+}
+```
+
+Plugin failure must not crash bus. Bundled allowlist in v1; capability permissions v4.
+
+---
+
+## Deploy (v1)
+
+Docker Compose on one VPS: `api`, `postgres`, `discord`.
+
+```text
+DATABASE_URL  DISCORD_BOT_TOKEN  DISCORD_SERVICE_API_KEY
+API_BASE_URL  DISCORD_DEVELOPER_IDS
 ```
 
 ---
 
-# Current Domains
+## Phases
 
-Keep the core small.
+1. monorepo + api + discord + users/permissions/messages + event bus + 1 plugin  
+2. web + mobile + Redis  
+3. notifications + scheduling + background jobs  
+4. advanced plugins + external integrations + distributed workers
 
-Core domains:
-
-```text
-users/
-permissions/
-messages/
-plugins/
-```
-
-Potential future domains:
-
-```text
-tasks/
-ai/
-workflows/
-knowledge/
-```
-
-Only add domains when they become important.
-
----
-
-# Current Folder Structure
-
-```text
-src/
-
-api/
-
-users/
-permissions/
-messages/
-
-plugins/
-
-events/
-  event-bus.ts
-
-database/
-```
-
----
-
-# Technology Stack
-
-Backend:
-
-```text
-TypeScript
-Fastify
-```
-
-Frontend:
-
-```text
-Next.js
-```
-
-Mobile:
-
-```text
-React Native / Expo
-```
-
-Database:
-
-```text
-PostgreSQL
-```
-
-Optional:
-
-```text
-Redis
-```
-
-Deployment:
-
-```text
-Docker Compose
-```
-
----
-
-# Things We Intentionally Avoid
-
-Not because they are bad.
-
-Because they are unnecessary right now.
-
-Avoid:
-
-```text
-Microservices
-Kafka
-RabbitMQ
-CQRS
-Command Bus
-Event Sourcing
-Kubernetes
-Plugin Marketplace
-```
-
-Reason:
-
-```text
-More complexity
-Little benefit
-```
-
-for Version 1.
-
----
-
-# Growth Path
-
-Version 1:
-
-```text
-Fastify
-Services
-PostgreSQL
-Event Bus
-Plugins
-Discord
-```
-
-Version 2:
-
-```text
-Web App
-Mobile App
-Redis
-```
-
-Version 3:
-
-```text
-Notifications
-Scheduling
-Background Jobs
-```
-
-Version 4:
-
-```text
-Advanced Plugin System
-External Integrations
-Distributed Workers
-```
-
-Only add complexity when a real need appears.
-
----
-
-# Final Architecture
-
-```text
-Discord
-Web
-Mobile
-      ↓
-    Fastify
-      ↓
-   Services
-      ↓
- PostgreSQL
-
-   Services
-      ↓
-   Event Bus
-      ↓
-    Plugins
-```
-
----
-
-# Suggested Skills
-
-Future agent should be comfortable with:
-
-* TypeScript
-* Fastify
-* Next.js
-* React Native
-* PostgreSQL
-* Docker Compose
-* Event-driven architecture
-* Plugin architecture
-* REST APIs
-* Authentication / Authorization
-* Software architecture
-
-Avoid recommending enterprise patterns unless a real scaling problem appears.
-
----
-
-# One Sentence Summary
-
-Build a simple backend where services own business logic, emit events when important things happen, and plugins subscribe to those events while Discord, web, and mobile remain thin clients.
+**More detail:** `docs/Potential_Rewrite_Architecture.md` (diagrams, sequences).
