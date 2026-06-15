@@ -1,75 +1,120 @@
-# Discord Secretary (DM Calendar Bot)
+# Discord Secretary (v1)
 
-This repo is now a slim Discord DM bot focused only on Google Calendar.
+Greenfield v1 rewrite: Discord DM → Fastify API → PostgreSQL → in-memory event bus → bundled plugins.
 
-## What it does
+The Discord app is a thin API client. All business logic lives in the API.
 
-- Slash command: `/gcalendar` to view upcoming events.
-- DM trigger: send `add calendar ...` to create events from natural language.
-- OAuth callback endpoint for Google auth: `GET /oauth/callback`.
+## Stack
+
+- TypeScript
+- Fastify
+- PostgreSQL
+- Drizzle ORM
+- Docker Compose
+- discord.js
+
+## Prerequisites
+
+- Node.js 20+
+- Docker and Docker Compose
+- A Discord bot application and token ([Discord Developer Portal](https://discord.com/developers/applications))
 
 ## Quick start
 
-1. Install dependencies:
-  - `npm install`
-2. Configure `config/config.json` placeholders and set env vars (copy `.env.example` to `.env` if desired). The app auto-loads `.env` on startup:
-  - `DISCORD_BOT_TOKEN`
-  - `GOOGLE_CLIENT_ID`
-  - `GOOGLE_CLIENT_SECRET`
-  - `GOOGLE_REDIRECT_URI`
-  - (optional, for LLM scheduling) `LOCAL_LLM_ENABLED`, `LOCAL_LLM_PROVIDER` (`ollama` or `openrouter`), `LOCAL_LLM_MODEL`, `SCHEDULING_TIME_ZONE`
-3. Register slash commands:
-  - `npm run commands:register`
-4. Start the bot:
-  - `npm start`
+1. Copy environment variables:
 
-## Notes
+   ```bash
+   cp .env.example .env
+   ```
 
-- This project is DM-only and ignores guild interactions.
-- OAuth tokens are stored in `config/google-tokens.json` after the first successful auth callback.
+2. Edit `.env` with your values (no real secrets in `.env.example`):
 
-## How “add calendar / add event” works
+   | Variable | Purpose |
+   | --- | --- |
+   | `DISCORD_BOT_TOKEN` | Bot token from the Discord Developer Portal |
+   | `DISCORD_SERVICE_API_KEY` | Shared secret between the Discord app and API (`Authorization: Bearer …`) |
+   | `DISCORD_DEVELOPER_IDS` | Comma-separated Discord user snowflakes allowed to use the bot |
+   | `DATABASE_URL` | PostgreSQL connection string |
+   | `API_BASE_URL` | URL the Discord app uses to reach the API (use `http://api:3000` inside Compose) |
 
-Messages are handled only in **DMs**. Only users listed in `developers` (via `config/config.json` or `DISCORD_DEVELOPER_IDS` in `.env`) can use this.
+3. Install dependencies:
 
-1. **Trigger**
-  A DM whose content matches `add calendar …` or `add event …` (case-insensitive) runs `[src/triggers/add-calendar-trigger.ts](src/triggers/add-calendar-trigger.ts)`. Everything after that prefix is the **body** text to interpret.
-2. **Google Calendar**
-  The bot checks that Calendar OAuth is configured and that tokens exist (same flow as `/gcalendar`). If not connected, it replies with instructions to authorize.
-3. **Two parsing paths**
-  - **Multiple events (LLM)**  
-   If the body **looks like more than one event**, the bot tries an LLM first (Ollama or OpenRouter):
-    - Heuristics: the word **and**, a **comma**, or **more than one** date/time found by [chrono-node](https://github.com/wanasit/chrono).
-    - When `LOCAL_LLM_ENABLED=true`, it calls the configured provider via `[src/services/llm-chat-client.ts](src/services/llm-chat-client.ts)` (Ollama `/api/chat` or OpenRouter `/v1/chat/completions`). The model must return **JSON** with an `events` array: each item has `summary`, `start` (ISO string), optional `end`, optional `allDay`.
-    - For each parsed event, the bot creates a Google Calendar event via `[insertEvent](src/services/calendar-service.ts)` and replies with an embed listing what was added (and any failures).
-  - **Single event (chrono only)**  
-  If the message does **not** match the “multiple” heuristics above, the LLM is disabled, the LLM request **fails** (timeout or error), or it returns **no** parsable events, the bot uses **chrono-node** on the body: it takes the **first** parsed date/time, strips that text from the title, and creates **one** event. If chrono finds no date at all, it asks for a clearer message.
-4. **Remote Ollama**
-  `LOCAL_LLM_BASE_URL` can point to another machine on your LAN (for example `http://192.168.2.63:11434`). The model name must match what `ollama list` shows (for example `gemma4:e2b`). The bot does not ship Ollama; it only speaks HTTP to whatever you configure.
-5. **OpenRouter (cloud, no Ollama)**
-  Set `LOCAL_LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY`, and `LOCAL_LLM_MODEL=google/gemma-4-26b-a4b-it:free` (or another [OpenRouter](https://openrouter.ai) model id). Default base URL is `https://openrouter.ai/api/v1`. The butler tool loop and multi-event JSON parser both use the same provider.
-6. **Environment variables** (see `[.env.example](.env.example)`)
+   ```bash
+   npm install
+   ```
 
-  | Variable               | Purpose                                                     |
-  | ---------------------- | ----------------------------------------------------------- |
-  | `LOCAL_LLM_ENABLED`    | `true` to use an LLM for scheduling / multi-event parsing   |
-  | `LOCAL_LLM_PROVIDER`   | `ollama` (default) or `openrouter`                          |
-  | `OPENROUTER_API_KEY`   | Required when provider is `openrouter`                      |
-  | `LOCAL_LLM_BASE_URL`   | API base (Ollama default `http://127.0.0.1:11434`; OpenRouter `https://openrouter.ai/api/v1`) |
-  | `LOCAL_LLM_MODEL`      | Ollama tag (e.g. `gemma4:e2b`) or OpenRouter id (e.g. `google/gemma-4-26b-a4b-it:free`) |
-  | `LOCAL_LLM_TIMEOUT_MS` | Wall-clock wait for a chat reply (default **300000** ms)    |
-  | `LOCAL_LLM_TOOL_MAX_ROUNDS` | Max tool-loop turns for the butler agent (default **5**) |
-  | `SCHEDULING_TIME_ZONE` | IANA timezone used for natural-language times (e.g. `America/New_York`) |
+4. Start Postgres, API, and Discord app:
 
+   ```bash
+   docker compose up
+   ```
 
-## Troubleshooting
+   Or use the npm script:
 
-- **`Request timed out` (LLM)**  
-  Large or remote models can take longer than a few seconds, especially on first load. Increase `LOCAL_LLM_TIMEOUT_MS` (for example `180000` or `300000`). For Ollama, warm the model once: `ollama run gemma4:e2b "hi"`.
+   ```bash
+   npm run docker:up
+   ```
 
-- **OpenRouter errors**  
-  Confirm `OPENROUTER_API_KEY` is set and `LOCAL_LLM_MODEL` matches the model slug on OpenRouter. Free-tier models (`:free`) may rate-limit; retry or use a paid model id.
+5. Apply database migrations (once the API workspace exposes them):
 
-- **`invalid_grant` when calling Google Calendar**  
-  The refresh token in `config/google-tokens.json` no longer works with your OAuth client (revoked access, wrong client id/secret, password reset, etc.). The bot clears that file automatically when it detects `invalid_grant`, then sends a fresh **Authorize** link (see `/gcalendar` or the DM reply). Confirm `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` match your Google Cloud OAuth client if sign-in keeps failing.
+   ```bash
+   npm run db:migrate
+   ```
 
+6. Verify the API is up:
+
+   ```bash
+   curl http://localhost:3000/health
+   ```
+
+## V1 API
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Liveness check |
+| `GET` | `/api/users/me` | Current user (from header) |
+| `POST` | `/api/messages` | Save an inbound DM |
+
+Auth (v1):
+
+```text
+Authorization: Bearer <DISCORD_SERVICE_API_KEY>
+X-Discord-User-Id: <discord snowflake>
+```
+
+Errors:
+
+```json
+{ "error": { "code": "PERMISSION_DENIED", "message": "..." } }
+```
+
+## Repo layout
+
+```text
+apps/api/           Fastify API, services, repositories, event bus
+apps/discord/       Thin Discord client — API calls only
+packages/shared/    Shared DTOs, event types, error types
+database/           Drizzle schema and migrations
+plugins/installed/  Bundled v1 plugins
+```
+
+## Local development (without Docker)
+
+Run Postgres yourself, point `DATABASE_URL` at it, then:
+
+```bash
+npm run dev:api
+npm run dev:discord
+```
+
+## V1 done when
+
+- `docker compose up` starts Postgres, API, and Discord app
+- Migrations apply cleanly
+- `GET /health` returns OK
+- A Discord DM creates or resolves a user
+- Non-developer users are rejected
+- Valid DMs are saved to PostgreSQL
+- `message.received` fires and the reference plugin handles it
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for v1 architecture, API contract, and done criteria.

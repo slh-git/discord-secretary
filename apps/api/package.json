@@ -1,0 +1,23 @@
+{
+  "name": "@discord-secretary/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:generate": "prisma generate --schema=../../database/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema=../../database/schema.prisma"
+  },
+  "dependencies": {
+    "@discord-secretary/shared": "file:../../packages/shared",
+    "@prisma/client": "^6.19.3",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3",
+    "tsx": "^4.0.0"
+  }
+}

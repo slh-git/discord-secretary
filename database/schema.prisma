@@ -1,0 +1,30 @@
+// This file defines the PostgreSQL database schema and Prisma Client generator.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  discordUserId String    @unique @map("discord_user_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  messages      Message[]
+
+  @@map("users")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
