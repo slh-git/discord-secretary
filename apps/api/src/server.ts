@@ -1,6 +1,7 @@
 // This file starts the Fastify API server and exposes the first v1 route: GET /health.
 
 import Fastify from "fastify";
+import { registerMessageRoutes } from "./api/messagesRoutes.js";
 
 // Read server host/port from the environment, with defaults for local development.
 const host = process.env.API_HOST ?? "0.0.0.0";
@@ -18,6 +19,8 @@ app.get("/health", async () => {
     service: "discord-secretary-api"
   };
 });
+
+await registerMessageRoutes(app);
 
 // Start listening for HTTP requests, and fail loudly if startup crashes.
 try {
