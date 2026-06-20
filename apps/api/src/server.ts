@@ -2,6 +2,7 @@
 
 import Fastify from "fastify";
 import { registerMessageRoutes } from "./api/messagesRoutes.js";
+import { loadPlugins } from "./plugins/loadPlugins.js";
 
 // Read server host/port from the environment, with defaults for local development.
 const host = process.env.API_HOST ?? "0.0.0.0";
@@ -21,6 +22,12 @@ app.get("/health", async () => {
 });
 
 await registerMessageRoutes(app);
+
+// Load bundled plugins before listening so message.received handlers are ready for the first request.
+await loadPlugins({
+  logger: app.log,
+  config: process.env
+});
 
 // Start listening for HTTP requests, and fail loudly if startup crashes.
 try {
