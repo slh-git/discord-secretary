@@ -1,7 +1,8 @@
-// This file starts the Fastify API server and exposes the first v1 route: GET /health.
+// Boots the Fastify API server: health check, message/user routes, plugin loading, then listen.
 
 import Fastify from "fastify";
 import { registerMessageRoutes } from "./api/messagesRoutes.js";
+import { registerUserRoutes } from "./api/usersRoutes.js";
 import { loadPlugins } from "./plugins/loadPlugins.js";
 
 // Read server host/port from the environment, with defaults for local development.
@@ -22,6 +23,8 @@ app.get("/health", async () => {
 });
 
 await registerMessageRoutes(app);
+// Register user identity routes (GET /api/users/me) for Discord app user resolution.
+await registerUserRoutes(app);
 
 // Load bundled plugins before listening so message.received handlers are ready for the first request.
 await loadPlugins({
