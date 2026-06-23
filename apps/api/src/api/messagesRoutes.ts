@@ -4,11 +4,21 @@
 import type { FastifyInstance } from "fastify";
 import type { CreateMessageRequest } from "@discord-secretary/shared";
 import { createInboundMessage } from "../messages/messageService.js";
+import {
+  extractBearerToken,
+  isValidServiceKey,
+  unauthorizedServiceKeyBody
+} from "./serviceAuth.js";
 
 // Registers POST /api/messages for the Discord app.
 // The route extracts the acting Discord user ID from headers, rejects missing identity, and saves the inbound DM through the message service.
 export async function registerMessageRoutes(app: FastifyInstance) {
   app.post<{ Body: CreateMessageRequest }>("/api/messages", async (request, reply) => {
+    // Step 1 — service auth: is this request from our Discord app?
+    if (!isValidServiceKey(extractBearerToken(request.headers.authorization))) {
+      return reply.status(401).send(unauthorizedServiceKeyBody);
+    }
+
     const discordUserId = request.headers["x-discord-user-id"];
 
     if (typeof discordUserId !== "string" || !discordUserId.trim()) {

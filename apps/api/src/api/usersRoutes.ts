@@ -5,31 +5,11 @@
 import type { FastifyInstance } from "fastify";
 import { requireDeveloperDiscordUser } from "../permissions/permissionService.js";
 import { resolveDiscordUser } from "../users/userService.js";
-
-// Pull the raw token out of: Authorization: Bearer <DISCORD_SERVICE_API_KEY>
-// Returns null when the header is missing or not in Bearer format.
-function extractBearerToken(authorizationHeader: string | undefined) {
-  if (typeof authorizationHeader !== "string") {
-    return null;
-  }
-
-  // Case-insensitive "Bearer" prefix, then capture everything after it.
-  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() ?? null;
-}
-
-// Compare the request's service key to the one configured on the API.
-// v1 rule: only the Discord app should know DISCORD_SERVICE_API_KEY.
-function isValidServiceKey(providedKey: string | null) {
-  const expectedKey = process.env.DISCORD_SERVICE_API_KEY?.trim();
-
-  // Fail closed: if the server has no key configured, reject everyone.
-  if (!expectedKey || !providedKey) {
-    return false;
-  }
-
-  return providedKey === expectedKey;
-}
+import {
+  extractBearerToken,
+  isValidServiceKey,
+  unauthorizedServiceKeyBody
+} from "./serviceAuth.js";
 
 // Registers GET /api/users/me on the Fastify app.
 // Called once from server.ts during startup, same pattern as registerMessageRoutes().
@@ -39,12 +19,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
     const bearerToken = extractBearerToken(request.headers.authorization);
 
     if (!isValidServiceKey(bearerToken)) {
-      return reply.status(401).send({
-        error: {
-          code: "UNAUTHORIZED",
-          message: "Invalid or missing service API key."
-        }
-      });
+      return reply.status(401).send(unauthorizedServiceKeyBody);
     }
 
     // Step 2 — acting user: which Discord user is this request about?
