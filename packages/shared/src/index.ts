@@ -65,3 +65,33 @@ export interface CreateMessageResponse {
   content: string;
   createdAt: string;
 }
+
+/**
+ * Minimal logger surface plugins receive at runtime.
+ * Fastify's logger satisfies this structurally — no fastify dependency in shared.
+ */
+export interface PluginLogger {
+  info(obj: Record<string, unknown>, msg?: string): void;
+  info(msg: string): void;
+  error(obj: Record<string, unknown>, msg?: string): void;
+  error(msg: string): void;
+}
+
+/**
+ * Runtime context passed to every plugin handler (logger + env config only).
+ */
+export interface PluginContext {
+  logger: PluginLogger;
+  config: Record<string, string | undefined>;
+}
+
+/**
+ * Default export shape every bundled plugin must provide.
+ */
+export interface PluginDefinition {
+  name: string;
+  events: Record<
+    string,
+    (event: AppEvent, ctx: PluginContext) => void | Promise<void>
+  >;
+}

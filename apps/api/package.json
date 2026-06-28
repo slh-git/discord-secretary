@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "prisma generate --schema=../../database/schema.prisma",
+    "db:push": "prisma db push --schema=../../database/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=../../database/schema.prisma"
   },
   "dependencies": {

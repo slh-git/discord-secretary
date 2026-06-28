@@ -1,10 +1,9 @@
-// Import the event types from shared.
-// MessageReceivedPayload tells us what's inside message.received.
-import type { AppEvent, MessageReceivedPayload } from "@discord-secretary/shared";
-
-// Import PluginContext so TypeScript knows what ctx contains.
-// (Path may vary depending on your folder layout.)
-import type { PluginContext } from "../../../apps/api/src/plugins/types.js";
+// Event + plugin types from shared — plugins must not import from apps/api.
+import type {
+  AppEvent,
+  MessageReceivedPayload,
+  PluginContext
+} from "@discord-secretary/shared";
 
 // Every plugin exports a default object matching PluginDefinition.
 export default {

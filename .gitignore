@@ -3,6 +3,11 @@
 # =====================================================
 /dist
 /temp
+
+# Stray tsc output under API src (plugin types should not compile here)
+apps/api/src/plugins/*.js
+apps/api/src/plugins/*.d.ts
+apps/api/src/plugins/*.map
 /**/config/**/*.json
 !/**/config/**/*.example.json
 
