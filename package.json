@@ -13,7 +13,8 @@
         "packages/*"
     ],
     "scripts": {
-        "build": "npm run build --workspaces --if-present",
+        "build:plugins": "tsc -p plugins/tsconfig.json && cp plugins/dist/reference-plugin/index.js plugins/installed/reference-plugin/index.js",
+        "build": "npm run build:plugins && npm run build --workspaces --if-present",
         "dev:api": "npm run dev --workspace=apps/api",
         "dev:discord": "npm run dev --workspace=apps/discord",
         "db:generate": "npm run db:generate --workspace=apps/api",

@@ -35,8 +35,7 @@ export async function registerUserRoutes(app: FastifyInstance) {
     }
 
     // Step 3 — v1 allowlist: only configured developer Discord IDs may use the API.
-    // requireDeveloperDiscordUser throws if the user is not allowed.
-    // (Error mapping to JSON is a follow-up polish item.)
+    // requireDeveloperDiscordUser throws if the user is not allowed; server.ts maps that to 403.
     requireDeveloperDiscordUser(discordUserId);
 
     // Step 4 — resolve or create the local User row for this Discord snowflake.
