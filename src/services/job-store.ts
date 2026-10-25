@@ -25,9 +25,7 @@ export class JobStore {
     private writeQueue: Promise<void> = Promise.resolve();
 
     constructor(filePath?: string) {
-        this.filePath =
-            filePath ??
-            path.join(process.cwd(), 'data', 'reminder-jobs.json');
+        this.filePath = filePath ?? path.join(process.cwd(), 'data', 'reminder-jobs.json');
     }
 
     public async enqueueReminder(input: {

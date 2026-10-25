@@ -2,12 +2,12 @@ import { ChatInputCommandInteraction, EmbedBuilder } from 'discord.js';
 
 import Config from '../../config.js';
 import {
-    createOAuth2Client,
     getAuthenticatedClient,
+    getAuthorizationUrl,
     invalidateTokensAndGetAuthUrl,
     isGoogleInvalidGrant,
-    SCOPES,
-} from '../../services/gcalendar-auth.js';
+} from '../../services/user/gcalendar-auth.js';
+import { UserPreferenceStore } from '../../services/user-preference-store.js';
 import { InteractionUtils } from '../../utils/index.js';
 import { Command, CommandDeferType } from '../index.js';
 
@@ -17,17 +17,12 @@ export class GCalendarCommand implements Command {
 
     public async execute(intr: ChatInputCommandInteraction): Promise<void> {
         try {
-            const oauth2Client = createOAuth2Client(Config.gCalendar);
-
             let calendar;
             try {
-                const auth = await getAuthenticatedClient(Config.gCalendar);
+                const auth = await getAuthenticatedClient(Config.gCalendar, intr.user.id);
                 calendar = auth.calendar;
             } catch {
-                const authUrl = oauth2Client.generateAuthUrl({
-                    access_type: 'offline',
-                    scope: SCOPES,
-                });
+                const authUrl = getAuthorizationUrl(Config.gCalendar, intr.user.id);
 
                 const embed = new EmbedBuilder()
                     .setTitle('Google Calendar Authorization Required')
@@ -64,7 +59,13 @@ export class GCalendarCommand implements Command {
 
             for (const event of events) {
                 const start = event.start?.dateTime ?? event.start?.date;
-                const eventDate = start ? new Date(start).toLocaleString() : 'No date';
+                const eventDate = !start
+                    ? 'No date'
+                    : event.start?.date
+                      ? start
+                      : new Date(start).toLocaleString('en-US', {
+                            timeZone: UserPreferenceStore.getTimeZone(intr.user.id) ?? 'UTC',
+                        });
                 embed.addFields({
                     name: event.summary || 'No title',
                     value: eventDate,
@@ -76,7 +77,7 @@ export class GCalendarCommand implements Command {
         } catch (error) {
             console.error('Error fetching calendar events:', error);
             if (isGoogleInvalidGrant(error) && Config.gCalendar) {
-                const authUrl = await invalidateTokensAndGetAuthUrl(Config.gCalendar);
+                const authUrl = await invalidateTokensAndGetAuthUrl(Config.gCalendar, intr.user.id);
                 const embed = new EmbedBuilder()
                     .setTitle('Google sign-in expired')
                     .setDescription(

@@ -21,7 +21,7 @@ export interface ParsedEvent {
  * Models often wrap JSON in markdown fences or leading/trailing prose;
  * try direct parse, then fenced block, then first `{...}` span.
  */
-function parseEventsPayloadFromContent(content: string): unknown | undefined {
+function parseEventsPayloadFromContent(content: string): unknown {
     const trimmed = content.trim();
     const attempts: Array<() => unknown> = [
         () => JSON.parse(trimmed),
@@ -105,7 +105,9 @@ export async function parseEventsWithLocalLlm(
             examples: [
                 {
                     text: 'add event for dentist on Wednesday 3pm',
-                    output: { events: [{ summary: 'dentist', start: '2026-04-15T15:00:00-04:00' }] },
+                    output: {
+                        events: [{ summary: 'dentist', start: '2026-04-15T15:00:00-04:00' }],
+                    },
                 },
                 {
                     text: 'add event for standup on Monday and retro on Friday at 2pm',
@@ -134,7 +136,7 @@ export async function parseEventsWithLocalLlm(
         );
         contentStr = res.content;
     } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = err instanceof Error ? err.message : 'Unknown error';
         const isTimeout = /timed out|timeout/i.test(message);
         Logger.warn('LLM request failed; falling back to chrono if applicable.', {
             provider: config.provider,

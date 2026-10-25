@@ -13,7 +13,9 @@ function unknownToErrorMessage(err: unknown): string {
     }
 }
 
-function isSendableChannel(value: unknown): value is { send: (content: string) => Promise<unknown> } {
+function isSendableChannel(
+    value: unknown
+): value is { send: (content: string) => Promise<unknown> } {
     return (
         typeof value === 'object' &&
         value !== null &&

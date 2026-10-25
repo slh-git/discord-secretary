@@ -39,12 +39,7 @@ async function start(): Promise<void> {
     let triggerHandler = new TriggerHandler(triggers);
     let messageHandler = new MessageHandler(triggerHandler);
 
-    let bot = new Bot(
-        Config.client.token,
-        client,
-        messageHandler,
-        commandHandler
-    );
+    let bot = new Bot(Config.client.token, client, messageHandler, commandHandler);
 
     let serveHttp = !client.shard || client.shard.ids[0] === 0;
     if (serveHttp) {

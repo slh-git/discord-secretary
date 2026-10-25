@@ -13,6 +13,8 @@ import {
 } from '../services/llm-tool-agent.js';
 import { parseEventsWithLocalLlm } from '../services/local-llm-event-parser.js';
 import { Logger } from '../services/logger.js';
+import { formatInTimeZone, parseIsoInTimeZone } from '../services/time-zone.js';
+import { UserPreferenceStore } from '../services/user-preference-store.js';
 
 const ADD_CALENDAR_REGEX = /^add\s+(?:calendar|event)\s+(.+)$/i;
 const CONFIRM_REGEX = /^confirm\s+([a-z0-9-]{6,})$/i;
@@ -35,10 +37,48 @@ interface PendingConfirmation {
     channelId: string;
     createdAtMs: number;
     actions: ButlerAction[];
+    timeZone: string;
+    expiresAtMs?: number;
+}
+
+class PendingConfirmationStore {
+    public constructor(
+        private readonly confirmations: Map<string, PendingConfirmation>,
+        private readonly createToken: () => string
+    ) {}
+
+    public save(
+        userId: string,
+        channelId: string,
+        actions: ButlerAction[],
+        timeZone: string,
+        expiresAt: Date
+    ): string {
+        const token = this.createToken();
+        this.confirmations.set(token, {
+            userId,
+            channelId,
+            createdAtMs: Date.now(),
+            actions,
+            timeZone,
+            expiresAtMs: expiresAt.getTime(),
+        });
+        return token;
+    }
+}
+
+function formatActionTime(value: string, timeZone: string, allDay: boolean): string {
+    if (allDay) return value;
+    const instant = parseIsoInTimeZone(value, timeZone);
+    return Number.isNaN(instant.getTime()) ? value : formatInTimeZone(instant, timeZone);
 }
 
 export class AddCalendarTrigger implements Trigger {
     private static pendingConfirmations = new Map<string, PendingConfirmation>();
+    public readonly pendingActions = new PendingConfirmationStore(
+        AddCalendarTrigger.pendingConfirmations,
+        () => this.createConfirmationToken()
+    );
 
     constructor(private readonly jobStore: JobStore) {}
 
@@ -73,6 +113,7 @@ export class AddCalendarTrigger implements Trigger {
         }
 
         const now = new Date();
+        const timeZone = UserPreferenceStore.getTimeZone(msg.author.id) ?? 'UTC';
 
         if (Config.localLlm.enabled) {
             try {
@@ -81,7 +122,7 @@ export class AddCalendarTrigger implements Trigger {
                     userId: msg.author.id,
                     channelId: msg.channelId,
                     nowIso: now.toISOString(),
-                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+                    timeZone,
                 });
 
                 if (toolResult.pendingConfirmation.length > 0) {
@@ -91,12 +132,14 @@ export class AddCalendarTrigger implements Trigger {
                         channelId: msg.channelId,
                         createdAtMs: Date.now(),
                         actions: toolResult.pendingConfirmation,
+                        timeZone,
                     });
                     await this.sendReply(
                         msg,
                         this.buildConfirmationEmbed(
                             token,
                             toolResult.pendingConfirmation,
+                            timeZone,
                             toolResult.confirmationReason
                         )
                     );
@@ -147,7 +190,7 @@ export class AddCalendarTrigger implements Trigger {
                 const parsed = await parseEventsWithLocalLlm(Config.localLlm, {
                     text: body,
                     nowIso: now.toISOString(),
-                    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+                    timeZone,
                 });
 
                 if (parsed.length > 0) {
@@ -226,7 +269,7 @@ export class AddCalendarTrigger implements Trigger {
             if (!chronoResults || chronoResults.length === 0) {
                 await this.sendReply(
                     msg,
-                    "I couldn't find a date or time in that message. Try something like: `add calendar meeting tomorrow at 2 pm`."
+                    `I couldn't find a date or time in that message. Try something like: \`add calendar meeting tomorrow at 2 pm\`.`
                 );
                 return;
             }
@@ -279,7 +322,10 @@ export class AddCalendarTrigger implements Trigger {
             await this.sendReply(msg, 'That confirmation token is not valid in this conversation.');
             return;
         }
-        if (Date.now() - pending.createdAtMs > CONFIRM_TTL_MS) {
+        const expired = pending.expiresAtMs
+            ? Date.now() > pending.expiresAtMs
+            : Date.now() - pending.createdAtMs > CONFIRM_TTL_MS;
+        if (expired) {
             AddCalendarTrigger.pendingConfirmations.delete(token);
             await this.sendReply(msg, 'Confirmation token expired. Please send the request again.');
             return;
@@ -289,6 +335,7 @@ export class AddCalendarTrigger implements Trigger {
         const executed = await executeButlerActions(pending.actions, this.jobStore, {
             userId: msg.author.id,
             channelId: msg.channelId,
+            timeZone: pending.timeZone,
         });
         await this.sendReply(
             msg,
@@ -299,13 +346,14 @@ export class AddCalendarTrigger implements Trigger {
     private buildConfirmationEmbed(
         token: string,
         actions: ButlerAction[],
+        timeZone: string,
         reason?: string
     ): EmbedBuilder {
         const lines = actions.map(action => {
             if (action.kind === 'create_calendar_event') {
-                return `- Calendar: **${action.summary}** at ${action.start}`;
+                return `- Calendar: **${action.summary}** at ${formatActionTime(action.start, timeZone, action.allDay === true)}`;
             }
-            return `- Reminder: **${action.text}** at ${action.when}`;
+            return `- Reminder: **${action.text}** at ${formatActionTime(action.when, timeZone, false)}`;
         });
 
         const reasonLine =

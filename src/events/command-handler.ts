@@ -21,9 +21,7 @@ export class CommandHandler implements EventHandler {
         Config.rateLimiting.commands.interval * 1000
     );
 
-    constructor(
-        public commands: Command[]
-    ) {}
+    constructor(public commands: Command[]) {}
 
     public async process(intr: CommandInteraction | AutocompleteInteraction): Promise<void> {
         // Don't respond to self, or other bots

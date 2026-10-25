@@ -1,4 +1,5 @@
-import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
+import { calendar } from 'googleapis/build/src/apis/calendar/index.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -73,10 +74,8 @@ export interface GCalendarConfig {
     redirect_uris: string[];
 }
 
-export function createOAuth2Client(
-    config: GCalendarConfig
-): import('googleapis').Auth.OAuth2Client {
-    return new google.auth.OAuth2(config.client_id, config.client_secret, config.redirect_uris[0]);
+export function createOAuth2Client(config: GCalendarConfig): OAuth2Client {
+    return new OAuth2Client(config.client_id, config.client_secret, config.redirect_uris[0]);
 }
 
 /**
@@ -84,15 +83,15 @@ export function createOAuth2Client(
  * Throws if file is missing or invalid.
  */
 export async function getAuthenticatedClient(config: GCalendarConfig): Promise<{
-    oauth2Client: import('googleapis').Auth.OAuth2Client;
-    calendar: ReturnType<typeof google.calendar>;
+    oauth2Client: OAuth2Client;
+    calendar: ReturnType<typeof calendar>;
 }> {
     const oauth2Client = createOAuth2Client(config);
     const tokenData = await fs.readFile(TOKEN_PATH, 'utf-8');
     const tokens = JSON.parse(tokenData);
     oauth2Client.setCredentials(tokens);
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-    return { oauth2Client, calendar };
+    const calendarClient = calendar({ version: 'v3', auth: oauth2Client });
+    return { oauth2Client, calendar: calendarClient };
 }
 
 /**

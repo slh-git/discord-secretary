@@ -58,7 +58,7 @@ export function postJson<TResponse>(
         const lib = url.protocol === 'https:' ? https : http;
 
         let settled = false;
-        const finish = (fn: () => void) => {
+        const finish = (fn: () => void): void => {
             if (settled) return;
             settled = true;
             clearTimeout(deadline);
@@ -93,14 +93,12 @@ export function postJson<TResponse>(
                     if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                         try {
                             finish(() => resolve(JSON.parse(raw) as TResponse));
-                        } catch (err) {
-                            finish(() => reject(err));
+                        } catch {
+                            finish(() => reject(new Error('Invalid JSON response')));
                         }
                         return;
                     }
-                    finish(() =>
-                        reject(new Error(`HTTP ${res.statusCode ?? 'unknown'}: ${raw}`))
-                    );
+                    finish(() => reject(new Error(`HTTP ${res.statusCode ?? 'unknown'}: ${raw}`)));
                 });
                 res.on('error', err => finish(() => reject(err)));
             }
@@ -139,8 +137,8 @@ function getJson<TResponse>(
                     if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
                         try {
                             resolve(JSON.parse(raw) as TResponse);
-                        } catch (err) {
-                            reject(err);
+                        } catch {
+                            reject(new Error('Invalid JSON response'));
                         }
                         return;
                     }
@@ -198,7 +196,8 @@ function normalizeToolCalls(raw: unknown): LlmToolCall[] {
         if (!name) continue;
 
         const id =
-            (typeof row.id === 'string' && row.id.length > 0 ? row.id : undefined) ?? nextToolCallId();
+            (typeof row.id === 'string' && row.id.length > 0 ? row.id : undefined) ??
+            nextToolCallId();
         const args = fn?.arguments ?? row.arguments;
         out.push({ id, name, arguments: args });
     }
@@ -335,9 +334,9 @@ export async function chat(
     options?: LlmChatOptions
 ): Promise<LlmChatResult> {
     if (config.provider === 'openrouter') {
-        return chatOpenRouter(config, messages, options);
+        return await chatOpenRouter(config, messages, options);
     }
-    return chatOllama(config, messages, options);
+    return await chatOllama(config, messages, options);
 }
 
 type OllamaTagsResponse = { models?: Array<{ name?: string; model?: string }> };
@@ -371,7 +370,7 @@ export async function logLlmProbe(config: LlmConfig): Promise<void> {
     try {
         data = await getJson<OllamaTagsResponse>(tagsUrl, shortTimeout);
     } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = err instanceof Error ? err.message : 'Unknown error';
         Logger.warn(
             'Local LLM is enabled but Ollama was not reached at /api/tags. Is Ollama running and is LOCAL_LLM_BASE_URL correct?',
             { baseUrl: config.baseUrl, error: message }
